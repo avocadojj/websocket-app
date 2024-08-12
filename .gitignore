@@ -1,0 +1,19 @@
+# Ignore Python environment and related files
+backend/env/
+backend/__pycache__/
+backend/*.pyc
+
+# Ignore Node modules and build files
+frontend/node_modules/
+frontend/build/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE and editor files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
