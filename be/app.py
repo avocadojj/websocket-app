@@ -5,7 +5,7 @@ from elasticsearch import Elasticsearch
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app)
-es = Elasticsearch(hosts=['localhost:9200'])  # Specify the Elasticsearch host
+es = Elasticsearch(hosts=['http://localhost:9200'])  # Specify the Elasticsearch host with scheme
 
 # Dictionary to store labels and remarks in memory
 transactions = {}
@@ -17,7 +17,7 @@ def get_transactions():
     res = es.search(index=index, body={"query": {"match_all": {}}})
     transactions_data = [{
         'id': hit['_id'],
-        'data': hit['_source']['data'],
+        'data': hit['_source'].get('data', ''),  # Use .get to avoid KeyError
         'label': transactions.get(hit['_id'], {}).get('label', ''),
         'remark': transactions.get(hit['_id'], {}).get('remark', '')
     } for hit in res['hits']['hits']]
