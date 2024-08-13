@@ -5,15 +5,16 @@ from elasticsearch import Elasticsearch
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app)
-es = Elasticsearch()
+es = Elasticsearch(hosts=['localhost:9200'])  # Specify the Elasticsearch host
 
 # Dictionary to store labels and remarks in memory
 transactions = {}
 
-# Endpoint to fetch transactions from Elasticsearch
+# Endpoint to fetch transactions from Elasticsearch with dynamic index
 @app.route('/get_transactions', methods=['GET'])
 def get_transactions():
-    res = es.search(index="transactions", body={"query": {"match_all": {}}})
+    index = request.args.get('index', 'transactions')  # Default index is 'transactions'
+    res = es.search(index=index, body={"query": {"match_all": {}}})
     transactions_data = [{
         'id': hit['_id'],
         'data': hit['_source']['data'],
@@ -25,17 +26,18 @@ def get_transactions():
 # WebSocket event to handle labeling a transaction
 @socketio.on('label_transaction')
 def handle_label_transaction(data):
+    index = data.get('index', 'transactions')  # Default index is 'transactions'
     transactions[data['id']] = transactions.get(data['id'], {})
     transactions[data['id']]['label'] = data['label']
-    emit('transaction_updated', {'id': data['id'], 'label': data['label']}, broadcast=True)
+    emit('transaction_updated', {'id': data['id'], 'label': data['label'], 'index': index}, broadcast=True)
 
 # WebSocket event to handle adding a remark to a transaction
 @socketio.on('add_remark')
 def handle_add_remark(data):
+    index = data.get('index', 'transactions')  # Default index is 'transactions'
     transactions[data['id']] = transactions.get(data['id'], {})
     transactions[data['id']]['remark'] = data['remark']
-    emit('transaction_updated', {'id': data['id'], 'remark': data['remark']}, broadcast=True)
+    emit('transaction_updated', {'id': data['id'], 'remark': data['remark'], 'index': index}, broadcast=True)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
-
