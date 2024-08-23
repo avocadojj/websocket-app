@@ -1,61 +1,131 @@
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO, emit
+import ssl
+from flask import Flask, jsonify, request
 from elasticsearch import Elasticsearch
-import urllib3
-
-# Disable SSL warnings
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from flask_socketio import SocketIO
+from flask_cors import CORS
+from datetime import datetime
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app)
+CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Elasticsearch client with SSL verification disabled
+# Configure SSL context with CA certificate
+ssl_context = ssl.create_default_context(cafile="http_ca.crt")
+
+# Setup Elasticsearch client with basic authentication
 es = Elasticsearch(
-    hosts=["https://localhost:9200"],
-    basic_auth=('elastic', 'your_password'),  # Use your Elasticsearch username and password
-    verify_certs=False,
-    ssl_show_warn=False
+    "https://localhost:9200",
+    ssl_context=ssl_context,
+    basic_auth=('elastic', 'jV-LSiIG7v6mq7002Wns')  # Replace with your actual username and password
 )
-
-transactions = {}
-
-@app.route('/es_test', methods=['GET'])
-def es_test():
-    try:
-        res = es.info()
-        return jsonify(res.body)  # Convert the response to a dictionary
-    except Exception as e:
-        return str(e), 500
 
 @app.route('/get_transactions', methods=['GET'])
 def get_transactions():
-    index = request.args.get('index', 'test')
+    index = request.args.get('index', 'default_index')
+    page = int(request.args.get('page', 1))
+    size = int(request.args.get('size', 10000))  # Adjust size as needed
+    from_index = (page - 1) * size
+    order_id = request.args.get('order_id', None)
+    merchant_id = request.args.get('merchant_id', None)
+    merchant_name = request.args.get('merchant_name', None)
+
+    current_date = datetime.utcnow().isoformat()
+
+    # Base query to fetch transactions up to the current date
+    query = {
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "range": {
+                            "@timestamp": {
+                                "lte": current_date
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        "size": size,
+        "from": from_index,
+        "sort": [
+            {"@timestamp": "asc"}
+        ]
+    }
+
+    # Add filtering by order_id if provided
+    if order_id:
+        query["query"]["bool"]["must"].append({
+            "term": {"order_id": order_id}
+        })
+
+    # Add filtering by merchant_id if provided
+    if merchant_id:
+        query["query"]["bool"]["must"].append({
+            "term": {"customer_id": merchant_id}
+        })
+
+    # Add filtering by merchant_name if provided
+    if merchant_name:
+        query["query"]["bool"]["must"].append({
+            "match": {"customer_full_name": merchant_name}
+        })
+
     try:
-        res = es.search(index=index, body={"query": {"match_all": {}}})
-        transactions_data = [{
-            'id': hit['_id'],
-            'data': hit['_source'].get('data', ''),
-            'label': transactions.get(hit['_id'], {}).get('label', ''),
-            'remark': transactions.get(hit['_id'], {}).get('remark', '')
-        } for hit in res['hits']['hits']]
-        return jsonify(transactions_data)
+        res = es.search(index=index, body=query)
+        transactions = res['hits']['hits']
+
+        formatted_transactions = []
+        for transaction in transactions:
+            source = transaction['_source']
+            formatted_transactions.append({
+                'id': transaction['_id'],
+                'timestamp': source['@timestamp'],
+                'data': source,
+                'tickbox': source.get('tickbox', False),
+                'remark': source.get('remark', '')
+            })
+
+        return jsonify({
+            "total": res['hits']['total']['value'],  # Adjusted to show total number of hits
+            "transactions": formatted_transactions
+        })
+
     except Exception as e:
-        return str(e), 500
+        print(f"Error fetching transactions: {e}")
+        return jsonify({"error": "Failed to fetch transactions"}), 500
 
-@socketio.on('label_transaction')
-def handle_label_transaction(data):
-    index = data.get('index', 'test')
-    transactions[data['id']] = transactions.get(data['id'], {})
-    transactions[data['id']]['label'] = data['label']
-    emit('transaction_updated', {'id': data['id'], 'label': data['label'], 'index': index}, broadcast=True)
+@app.route('/save_remark', methods=['POST'])
+def save_remark():
+    try:
+        data = request.json
+        doc_id = data['id']
+        remark = data['remark']
 
-@socketio.on('add_remark')
-def handle_add_remark(data):
-    index = data.get('index', 'test')
-    transactions[data['id']] = transactions.get(data['id'], {})
-    transactions[data['id']]['remark'] = data['remark']
-    emit('transaction_updated', {'id': data['id'], 'remark': data['remark'], 'index': index}, broadcast=True)
+        # Update the document in Elasticsearch
+        es.update(index='test', id=doc_id, body={"doc": {"remark": remark}})
+        socketio.emit('transaction_updated', {'id': doc_id, 'remark': remark})
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        print(f"Error saving remark: {e}")
+        return jsonify({"error": "Failed to save remark"}), 500
+
+@app.route('/toggle_tickbox', methods=['POST'])
+def toggle_tickbox():
+    try:
+        data = request.json
+        doc_id = data['id']
+        tickbox = data['tickbox']
+
+        # Update the document in Elasticsearch
+        es.update(index='test', id=doc_id, body={"doc": {"tickbox": tickbox}})
+        socketio.emit('transaction_updated', {'id': doc_id, 'tickbox': tickbox})
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        print(f"Error toggling tickbox: {e}")
+        return jsonify({"error": "Failed to toggle tickbox"}), 500
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
