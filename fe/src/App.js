@@ -70,7 +70,13 @@ const App = () => {
       });
   };
 
-  // Pagination calculations
+  const toggleDetails = (id) => {
+    setTransactions(transactions.map(tx =>
+      tx.id === id ? { ...tx, showDetails: !tx.showDetails } : tx
+    ));
+  };
+
+  // Calculate total pages based on the number of records and the page size
   const totalPages = Math.ceil(transactions.length / pageSize);
   const currentTransactions = transactions.slice(
     (currentPage - 1) * pageSize,
@@ -103,12 +109,6 @@ const App = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
     }
-  };
-
-  const toggleDetails = (id) => {
-    setTransactions(transactions.map(tx =>
-      tx.id === id ? { ...tx, showDetails: !tx.showDetails } : tx
-    ));
   };
 
   return (
@@ -212,4 +212,3 @@ const App = () => {
 };
 
 export default App;
-

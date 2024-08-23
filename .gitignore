@@ -1,18 +1,53 @@
-# Ignore Python environment and related files
-backend/env/
-backend/__pycache__/
-backend/*.pyc
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Ignore Node modules and build files
-frontend/node_modules/
-frontend/build/
+# Environment variables
+env/
+*.env
 
-# Ignore system files
-.DS_Store
-Thumbs.db
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Ignore IDE and editor files
+# Logs
+logs/
+*.log
+
+# Dependency directories
+node_modules/
+.bower_components/
+
+# Optional npm cache directory
+.npm
+
+# Debug and IDE files
 .vscode/
 .idea/
-*.sublime-workspace
-*.sublime-project
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.DS_Store
+
+# Distribution / Packaging
+dist/
+build/
+npm-debug.log*
+
+# Static files
+public/static/
+
+# Ignore .env files
+.env
+
+# Certificates
+*.crt
+
+# Ignore compiled JavaScript files (optional)
+*.js.map
+*.css.map
