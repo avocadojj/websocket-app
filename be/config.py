@@ -12,7 +12,7 @@ class Config:
     SSL_CONTEXT = ssl.create_default_context(cafile="http_ca.crt")
     
     # SQLAlchemy and Flask-Security Configuration
-    SQLALCHEMY_DATABASE_URI = 'postgresql://admin:admin@localhost:5432/frauddb'
+    SQLALCHEMY_DATABASE_URI = 'postgresql://admin:admin@localhost/frauddb'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     #Login

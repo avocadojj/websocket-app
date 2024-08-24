@@ -5,11 +5,16 @@ from elasticsearch import Elasticsearch
 from config import DevelopmentConfig
 from models import db, User, Role
 from flask_security import Security, SQLAlchemyUserDatastore
-from flask_migrate import Migrate  # Add this import statement
+from flask_migrate import Migrate
+import logging
+from logging.handlers import RotatingFileHandler
 
 # Initialize the Flask app
 app = Flask(__name__)
 app.config.from_object(DevelopmentConfig)  # Use the config
+
+# Disable CSRF Protection
+app.config['WTF_CSRF_ENABLED'] = False
 
 # Initialize CORS and SocketIO
 CORS(app)
@@ -30,15 +35,23 @@ migrate = Migrate(app, db)  # This initializes Flask-Migrate
 user_datastore = SQLAlchemyUserDatastore(db, User, Role)
 security = Security(app, user_datastore)
 
-# Import routes (blueprints)
-from routes import init_routes
+# Setup logging to a file
+handler = RotatingFileHandler('app.log', maxBytes=100000, backupCount=3)
+handler.setLevel(logging.DEBUG)  # Use DEBUG to capture more detailed logs
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+app.logger.addHandler(handler)
 
-# Initialize routes
+app.logger.setLevel(logging.DEBUG)  # Ensure the logger is set to capture debug level logs
+
+# Import routes after all the initializations to avoid circular imports
+from routes import init_routes
 init_routes(app)
 
 # Create roles before the first request
-@app.before_first_request
+@app.before_request
 def create_roles():
+    app.before_request_funcs[None].remove(create_roles)
     db.create_all()
     if not Role.query.filter_by(name='Admin').first():
         user_datastore.create_role(name='Admin', description='Administrator')
@@ -47,8 +60,6 @@ def create_roles():
     if not Role.query.filter_by(name='Rule Maker').first():
         user_datastore.create_role(name='Rule Maker', description='Manages rules')
     db.session.commit()
-
-
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)

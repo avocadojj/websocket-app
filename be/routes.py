@@ -1,11 +1,9 @@
-# routes.py
-
+import logging
 from flask import jsonify, request
-from flask_security import roles_required, auth_required,current_user, logout_user
-from datetime import datetime
-from app import es, socketio, user_datastore
-from models import db
+from flask_security import roles_required, auth_required, current_user, logout_user, login_user
 from flask_security.utils import hash_password, send_mail
+from datetime import datetime
+from app import es, socketio, user_datastore, db
 
 def init_routes(app):
     @app.route('/get_transactions', methods=['GET'])
@@ -64,7 +62,7 @@ def init_routes(app):
             })
 
         except Exception as e:
-            print(f"Error fetching transactions: {e}")
+            app.logger.error(f"Error fetching transactions: {e}")
             return jsonify({"error": "Failed to fetch transactions"}), 500
 
     @app.route('/save_remark', methods=['POST'])
@@ -81,7 +79,7 @@ def init_routes(app):
             return jsonify({"status": "success"})
 
         except Exception as e:
-            print(f"Error saving remark: {e}")
+            app.logger.error(f"Error saving remark: {e}")
             return jsonify({"error": "Failed to save remark"}), 500
 
     @app.route('/toggle_tickbox', methods=['POST'])
@@ -98,7 +96,7 @@ def init_routes(app):
             return jsonify({"status": "success"})
 
         except Exception as e:
-            print(f"Error toggling tickbox: {e}")
+            app.logger.error(f"Error toggling tickbox: {e}")
             return jsonify({"error": "Failed to toggle tickbox"}), 500
 
     @app.route('/create_user', methods=['POST'])
@@ -120,14 +118,23 @@ def init_routes(app):
         db.session.commit()
         return jsonify({"message": f"User {email} created with role {role_name}"}), 201
 
-    # Route to handle user login
     @app.route('/login', methods=['POST'])
     def login():
         data = request.json
+        app.logger.debug(f"Login attempt for email: {data['email']}")
         user = user_datastore.find_user(email=data['email'])
-        if user and user.verify_and_update_password(data['password']):
-            login_user(user)
-            return jsonify({"message": "Logged in successfully", "user_id": user.id})
+        
+        if user:
+            app.logger.debug(f"User found: {user.email}")
+            if user.verify_and_update_password(data['password']):
+                app.logger.debug("Password verified successfully")
+                login_user(user)
+                return jsonify({"message": "Logged in successfully", "user_id": user.id})
+            else:
+                app.logger.warning("Password verification failed")
+        else:
+            app.logger.warning("User not found")
+        
         return jsonify({"error": "Invalid email or password"}), 401
 
     # Route to handle forgot password
@@ -146,3 +153,21 @@ def init_routes(app):
     def logout():
         logout_user()
         return jsonify({"message": "Logged out successfully"})
+
+    @app.route('/create_admin', methods=['GET'])
+    def create_admin():
+        user = user_datastore.find_user(email='admin@mail.com')
+        if user:
+            admin_role = user_datastore.find_or_create_role(name='Admin', description='Administrator')
+            if admin_role not in user.roles:
+                user_datastore.add_role_to_user(user, admin_role)
+                db.session.commit()
+                return jsonify({"message": "Admin role added to existing user!"}), 200
+            return jsonify({"message": "Admin user already exists and has the admin role"}), 200
+
+        # If user doesn't exist, create a new one
+        admin_role = user_datastore.find_or_create_role(name='Admin', description='Administrator')
+        user = user_datastore.create_user(email='admin@mail.com', password=hash_password('admin'))
+        user_datastore.add_role_to_user(user, admin_role)
+        db.session.commit()
+        return jsonify({"message": "Admin user created!"}), 201
