@@ -1,11 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import io from 'socket.io-client';
 import axios from 'axios';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import Login from './Login';
+import ForgotPassword from './ForgotPassword';
 
 // Establish a connection to the Socket.IO server
 const socket = io('http://localhost:5000');
 
-const App = () => {
+const Transactions = ({ userId }) => {
   const [transactions, setTransactions] = useState([]);
   const [pageSize, setPageSize] = useState(10); // Number of transactions per page
   const [currentPage, setCurrentPage] = useState(1); // Current page number
@@ -208,6 +211,26 @@ const App = () => {
         <button onClick={handleNextPage} disabled={currentPage === totalPages}>Next</button>
       </div>
     </div>
+  );
+};
+
+const App = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userId, setUserId] = useState(null);
+
+  const handleLogin = (userId) => {
+    setIsAuthenticated(true);
+    setUserId(userId);
+  };
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
+        <Route path="/forgot_password" element={<ForgotPassword />} />
+        <Route path="/" element={isAuthenticated ? <Transactions userId={userId} /> : <Navigate to="/login" />} />
+      </Routes>
+    </Router>
   );
 };
 

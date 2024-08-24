@@ -1,131 +1,54 @@
-import ssl
-from flask import Flask, jsonify, request
-from elasticsearch import Elasticsearch
+from flask import Flask
 from flask_socketio import SocketIO
 from flask_cors import CORS
-from datetime import datetime
+from elasticsearch import Elasticsearch
+from config import DevelopmentConfig
+from models import db, User, Role
+from flask_security import Security, SQLAlchemyUserDatastore
+from flask_migrate import Migrate  # Add this import statement
 
+# Initialize the Flask app
 app = Flask(__name__)
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config.from_object(DevelopmentConfig)  # Use the config
 
-# Configure SSL context with CA certificate
-ssl_context = ssl.create_default_context(cafile="http_ca.crt")
+# Initialize CORS and SocketIO
+CORS(app)
+socketio = SocketIO(app, cors_allowed_origins=app.config['CORS_ALLOWED_ORIGINS'])
 
 # Setup Elasticsearch client with basic authentication
 es = Elasticsearch(
-    "https://localhost:9200",
-    ssl_context=ssl_context,
-    basic_auth=('elastic', 'jV-LSiIG7v6mq7002Wns')  # Replace with your actual username and password
+    app.config['ES_HOST'],
+    ssl_context=app.config['SSL_CONTEXT'],
+    basic_auth=app.config['ES_BASIC_AUTH']
 )
 
-@app.route('/get_transactions', methods=['GET'])
-def get_transactions():
-    index = request.args.get('index', 'default_index')
-    page = int(request.args.get('page', 1))
-    size = int(request.args.get('size', 10000))  # Adjust size as needed
-    from_index = (page - 1) * size
-    order_id = request.args.get('order_id', None)
-    merchant_id = request.args.get('merchant_id', None)
-    merchant_name = request.args.get('merchant_name', None)
+# Initialize SQLAlchemy and Flask-Migrate
+db.init_app(app)
+migrate = Migrate(app, db)  # This initializes Flask-Migrate
 
-    current_date = datetime.utcnow().isoformat()
+# Setup Flask-Security
+user_datastore = SQLAlchemyUserDatastore(db, User, Role)
+security = Security(app, user_datastore)
 
-    # Base query to fetch transactions up to the current date
-    query = {
-        "query": {
-            "bool": {
-                "must": [
-                    {
-                        "range": {
-                            "@timestamp": {
-                                "lte": current_date
-                            }
-                        }
-                    }
-                ]
-            }
-        },
-        "size": size,
-        "from": from_index,
-        "sort": [
-            {"@timestamp": "asc"}
-        ]
-    }
+# Import routes (blueprints)
+from routes import init_routes
 
-    # Add filtering by order_id if provided
-    if order_id:
-        query["query"]["bool"]["must"].append({
-            "term": {"order_id": order_id}
-        })
+# Initialize routes
+init_routes(app)
 
-    # Add filtering by merchant_id if provided
-    if merchant_id:
-        query["query"]["bool"]["must"].append({
-            "term": {"customer_id": merchant_id}
-        })
+# Create roles before the first request
+@app.before_first_request
+def create_roles():
+    db.create_all()
+    if not Role.query.filter_by(name='Admin').first():
+        user_datastore.create_role(name='Admin', description='Administrator')
+    if not Role.query.filter_by(name='Fraud Analyst').first():
+        user_datastore.create_role(name='Fraud Analyst', description='Handles fraud analysis')
+    if not Role.query.filter_by(name='Rule Maker').first():
+        user_datastore.create_role(name='Rule Maker', description='Manages rules')
+    db.session.commit()
 
-    # Add filtering by merchant_name if provided
-    if merchant_name:
-        query["query"]["bool"]["must"].append({
-            "match": {"customer_full_name": merchant_name}
-        })
 
-    try:
-        res = es.search(index=index, body=query)
-        transactions = res['hits']['hits']
-
-        formatted_transactions = []
-        for transaction in transactions:
-            source = transaction['_source']
-            formatted_transactions.append({
-                'id': transaction['_id'],
-                'timestamp': source['@timestamp'],
-                'data': source,
-                'tickbox': source.get('tickbox', False),
-                'remark': source.get('remark', '')
-            })
-
-        return jsonify({
-            "total": res['hits']['total']['value'],  # Adjusted to show total number of hits
-            "transactions": formatted_transactions
-        })
-
-    except Exception as e:
-        print(f"Error fetching transactions: {e}")
-        return jsonify({"error": "Failed to fetch transactions"}), 500
-
-@app.route('/save_remark', methods=['POST'])
-def save_remark():
-    try:
-        data = request.json
-        doc_id = data['id']
-        remark = data['remark']
-
-        # Update the document in Elasticsearch
-        es.update(index='test', id=doc_id, body={"doc": {"remark": remark}})
-        socketio.emit('transaction_updated', {'id': doc_id, 'remark': remark})
-        return jsonify({"status": "success"})
-
-    except Exception as e:
-        print(f"Error saving remark: {e}")
-        return jsonify({"error": "Failed to save remark"}), 500
-
-@app.route('/toggle_tickbox', methods=['POST'])
-def toggle_tickbox():
-    try:
-        data = request.json
-        doc_id = data['id']
-        tickbox = data['tickbox']
-
-        # Update the document in Elasticsearch
-        es.update(index='test', id=doc_id, body={"doc": {"tickbox": tickbox}})
-        socketio.emit('transaction_updated', {'id': doc_id, 'tickbox': tickbox})
-        return jsonify({"status": "success"})
-
-    except Exception as e:
-        print(f"Error toggling tickbox: {e}")
-        return jsonify({"error": "Failed to toggle tickbox"}), 500
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
