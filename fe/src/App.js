@@ -4,17 +4,18 @@ import axios from 'axios';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import Login from './Login';
 import ForgotPassword from './ForgotPassword';
+import Header from './Header';
+import Users from './Users';
 
-// Establish a connection to the Socket.IO server
 const socket = io('http://localhost:5000');
 
-const Transactions = ({ userId }) => {
+const Transactions = ({ userId, onRefresh }) => {
   const [transactions, setTransactions] = useState([]);
-  const [pageSize, setPageSize] = useState(10); // Number of transactions per page
-  const [currentPage, setCurrentPage] = useState(1); // Current page number
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
   const [inputPage, setInputPage] = useState(currentPage);
-  const [orderId, setOrderId] = useState(''); // Order ID for filtering
-  const [customerId, setCustomerId] = useState(''); // Customer ID for filtering
+  const [orderId, setOrderId] = useState('');
+  const [customerId, setCustomerId] = useState('');
 
   const fetchTransactions = useCallback(() => {
     axios.get('http://localhost:5000/get_transactions', {
@@ -31,14 +32,14 @@ const Transactions = ({ userId }) => {
       })
       .catch(error => {
         console.error("Error fetching transactions:", error);
+        alert('Error fetching transactions: ' + error.message);  // Add this line to alert errors
       });
   }, [currentPage, pageSize, orderId, customerId]);
 
+
   useEffect(() => {
-    // Fetch initial transactions
     fetchTransactions();
 
-    // Listen for real-time updates
     socket.on('transaction_updated', (updatedTransaction) => {
       setTransactions((prevTransactions) =>
         prevTransactions.map((tx) =>
@@ -47,7 +48,6 @@ const Transactions = ({ userId }) => {
       );
     });
 
-    // Cleanup on component unmount
     return () => {
       socket.off('transaction_updated');
     };
@@ -79,7 +79,6 @@ const Transactions = ({ userId }) => {
     ));
   };
 
-  // Calculate total pages based on the number of records and the page size
   const totalPages = Math.ceil(transactions.length / pageSize);
   const currentTransactions = transactions.slice(
     (currentPage - 1) * pageSize,
@@ -88,7 +87,7 @@ const Transactions = ({ userId }) => {
 
   const handlePageSizeChange = (event) => {
     setPageSize(parseInt(event.target.value, 10));
-    setCurrentPage(1); // Reset to first page whenever page size changes
+    setCurrentPage(1);
   };
 
   const handlePageChange = (event) => {
@@ -116,6 +115,8 @@ const Transactions = ({ userId }) => {
 
   return (
     <div>
+      <Header onLogout={onRefresh} onRefresh={fetchTransactions} /> {/* Add Header here */}
+
       <h1>Transactions</h1>
 
       <div>
@@ -223,12 +224,31 @@ const App = () => {
     setUserId(userId);
   };
 
+  const handleLogout = async () => {
+    try {
+        const response = await fetch('http://localhost:5000/logout', {
+            method: 'POST',
+            credentials: 'include',
+        });
+        if (response.ok) {
+            console.log("Logged out successfully");
+            setIsAuthenticated(false);
+            setUserId(null);
+        } else {
+            console.error("Logout failed");
+        }
+    } catch (error) {
+        console.error("An error occurred during logout", error);
+    }
+  };
+
   return (
     <Router>
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
         <Route path="/forgot_password" element={<ForgotPassword />} />
-        <Route path="/" element={isAuthenticated ? <Transactions userId={userId} /> : <Navigate to="/login" />} />
+        <Route path="/" element={isAuthenticated ? <Transactions userId={userId} onRefresh={handleLogout} /> : <Navigate to="/login" />} />
+        <Route path="/users" element={<Users />} /> {/* Add route for Users */}
       </Routes>
     </Router>
   );

@@ -1,6 +1,5 @@
 from flask import Flask
 from flask_socketio import SocketIO
-from flask_cors import CORS
 from elasticsearch import Elasticsearch
 from config import DevelopmentConfig
 from models import db, User, Role
@@ -8,6 +7,7 @@ from flask_security import Security, SQLAlchemyUserDatastore
 from flask_migrate import Migrate
 import logging
 from logging.handlers import RotatingFileHandler
+from flask_cors import CORS
 
 # Initialize the Flask app
 app = Flask(__name__)
@@ -17,7 +17,7 @@ app.config.from_object(DevelopmentConfig)  # Use the config
 app.config['WTF_CSRF_ENABLED'] = False
 
 # Initialize CORS and SocketIO
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 socketio = SocketIO(app, cors_allowed_origins=app.config['CORS_ALLOWED_ORIGINS'])
 
 # Setup Elasticsearch client with basic authentication
@@ -51,15 +51,28 @@ init_routes(app)
 # Create roles before the first request
 @app.before_request
 def create_roles():
-    app.before_request_funcs[None].remove(create_roles)
-    db.create_all()
-    if not Role.query.filter_by(name='Admin').first():
-        user_datastore.create_role(name='Admin', description='Administrator')
-    if not Role.query.filter_by(name='Fraud Analyst').first():
-        user_datastore.create_role(name='Fraud Analyst', description='Handles fraud analysis')
-    if not Role.query.filter_by(name='Rule Maker').first():
-        user_datastore.create_role(name='Rule Maker', description='Manages rules')
-    db.session.commit()
+    app.logger.info("Running create_roles before first request")
+    try:
+        app.before_request_funcs[None].remove(create_roles)
+        db.create_all()
+
+        if not Role.query.filter_by(name='Admin').first():
+            user_datastore.create_role(name='Admin', description='Administrator')
+            app.logger.debug("Created 'Admin' role")
+
+        if not Role.query.filter_by(name='Fraud Analyst').first():
+            user_datastore.create_role(name='Fraud Analyst', description='Handles fraud analysis')
+            app.logger.debug("Created 'Fraud Analyst' role")
+
+        if not Role.query.filter_by(name='Rule Maker').first():
+            user_datastore.create_role(name='Rule Maker', description='Manages rules')
+            app.logger.debug("Created 'Rule Maker' role")
+
+        db.session.commit()
+        app.logger.info("Roles committed to the database")
+    except Exception as e:
+        app.logger.error(f"Error in create_roles: {e}")
 
 if __name__ == '__main__':
+    app.logger.info("Starting Flask app")
     socketio.run(app, debug=True)
