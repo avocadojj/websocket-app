@@ -1,3 +1,4 @@
+/* Base styles for the application */
 .App {
   text-align: center;
 }
@@ -35,4 +36,71 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* New styles for the transactions table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+th {
+  background-color: #f2f2f2;
+  color: #333;
+}
+
+tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+tr:hover {
+  background-color: #ddd;
+}
+
+/* Highlight new transactions */
+.highlighted {
+  background-color: #ffffcc !important; /* Light yellow background */
+  animation: fadeHighlight 3s ease-out;
+}
+
+/* Fade out animation for highlighted rows */
+@keyframes fadeHighlight {
+  0% {
+    background-color: #ffffcc;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Pagination controls */
+.pagination-controls {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.pagination-controls input[type="number"] {
+  width: 50px;
+  text-align: center;
+  margin: 0 10px;
+}
+
+.pagination-controls button {
+  padding: 5px 10px;
+  margin: 0 5px;
+  cursor: pointer;
+}
+
+.pagination-controls button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }

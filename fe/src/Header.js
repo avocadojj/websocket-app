@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const Header = ({ onLogout, onRefresh }) => {
+const Header = ({ userEmail, loginTimestamp, onLogout, onRefresh }) => {
     const navigate = useNavigate();
 
     const handleManageUsers = () => {
@@ -12,15 +12,15 @@ const Header = ({ onLogout, onRefresh }) => {
         navigate(-1);
     };
 
-
     return (
         <header>
-          <div>
-            <button onClick={onRefresh}>Refresh</button>
-            <button onClick={onLogout}>Logout</button>
-            <button onClick={handleManageUsers}>Manage Users</button>
-            <button onClick={handleBack}>Back</button>            
-          </div>
+            <div>
+                <p>Hello, {userEmail} @ {loginTimestamp}</p> {/* Display user info and login timestamp */}
+                <button onClick={onRefresh}>Refresh</button>
+                <button onClick={onLogout}>Logout</button>
+                <button onClick={handleManageUsers}>Manage Users</button>
+                <button onClick={handleBack}>Back</button>
+            </div>
         </header>
     );
 };
