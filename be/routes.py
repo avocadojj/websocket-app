@@ -3,12 +3,18 @@ from flask import jsonify, request
 from flask_security import roles_required, auth_required, current_user, logout_user, login_user
 from flask_security.utils import hash_password, send_mail
 from datetime import datetime
+import pytz
 from app import es, socketio, user_datastore, db
 from models import Role, User  # Ensure Role and User models are imported
+
+# Define the global variable `latest_timestamp` at the module level
+latest_timestamp = None
 
 def init_routes(app):
     @app.route('/get_transactions', methods=['GET'])
     def get_transactions():
+        global latest_timestamp
+
         app.logger.info("Processing /get_transactions request")
         
         try:
@@ -16,6 +22,9 @@ def init_routes(app):
             page = int(request.args.get('page', 1))
             size = int(request.args.get('size', 10))  # Default size to 10 if not provided
             from_index = (page - 1) * size
+            order_id = request.args.get('order_id', None)
+            customer_id = request.args.get('customer_id', None)
+            current_date = datetime.utcnow().isoformat()
 
             app.logger.debug(f"Index: {index}, Page: {page}, Size: {size}, From: {from_index}")
 
@@ -23,16 +32,39 @@ def init_routes(app):
                 app.logger.warning(f"Index '{index}' does not exist.")
                 return jsonify({"error": f"Index '{index}' does not exist."}), 404
 
+            # Base query to fetch transactions up to the current datetime
             query = {
                 "query": {
-                    "match_all": {}  # Adjust the query as needed
+                    "bool": {
+                        "must":[
+                            {
+                                "range": {
+                                    "@timestamp":{
+                                        "lte":current_date
+                                    }
+                                }
+
+                            }
+                        ]
+                    }
                 },
                 "size": size,
                 "from": from_index,
                 "sort": [
-                    {"@timestamp": "asc"}
+                    {"@timestamp": "desc"} # sort by timestamp descending
                 ]
             }
+
+            # Add filtering by order_id if provided
+            if order_id:
+                query["query"]["bool"]["must"].append({
+                    "term": {"order_id": order_id}
+                })
+            # Add filtering by customer_id if provided            
+            if customer_id:
+                query["query"]["bool"]["must"].append({
+                    "term": {"customer_id": customer_id}
+                })
 
             app.logger.debug(f"Elasticsearch query: {query}")
 
@@ -44,13 +76,23 @@ def init_routes(app):
             formatted_transactions = []
             for transaction in transactions:
                 source = transaction['_source']
+                # Converted timestamp to UTC+7
+                utc_timestamp = datetime.strptime(source['@timestamp'], "%Y-%m-%dT%H:%M:%S%z")
+                utc_plus_7 = utc_timestamp.astimezone(pytz.timezone('Asia/Bangkok'))
                 formatted_transactions.append({
                     'id': transaction['_id'],
-                    'timestamp': source['@timestamp'],
+                    'timestamp': utc_plus_7.isoformat(),
                     'data': source,
                     'tickbox': source.get('tickbox', False),
                     'remark': source.get('remark', '')
                 })
+
+
+            #Check if there is new data based on the timestamp
+            new_timestamp = formatted_transactions[0]['timestamp'] if formatted_transactions else None 
+            if new_timestamp and (not latest_timestamp or new_timestamp > latest_timestamp):
+                latest_timestamp = new_timestamp
+                socketio.emit('new_data_available', {'message': 'New data available'})
 
             app.logger.info("Successfully processed /get_transactions request")
 

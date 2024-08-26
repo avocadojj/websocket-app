@@ -74,5 +74,5 @@ def create_roles():
         app.logger.error(f"Error in create_roles: {e}")
 
 if __name__ == '__main__':
-    app.logger.info("Starting Flask app")
+    app.logger.info("Start Web Fraud App")
     socketio.run(app, debug=True)
