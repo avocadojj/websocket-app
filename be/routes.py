@@ -4,6 +4,7 @@ from flask_security import roles_required, auth_required, current_user, logout_u
 from flask_security.utils import hash_password, send_mail
 from datetime import datetime
 from app import es, socketio, user_datastore, db
+from models import Role, User  # Ensure Role and User models are imported
 
 def init_routes(app):
     @app.route('/get_transactions', methods=['GET'])
@@ -243,7 +244,6 @@ def init_routes(app):
             app.logger.error(f"Error fetching users: {e}")
             return jsonify({"error": "Failed to fetch users"}), 500
 
-    # Update user role or status
     @app.route('/update_user', methods=['POST'])
     @roles_required('Admin')
     def update_user():
@@ -251,17 +251,20 @@ def init_routes(app):
         try:
             data = request.json
             user_id = data.get('id')
-            new_role = data.get('role')
+            new_roles = data.get('roles')  # Expecting a list of roles
             active_status = data.get('active')
 
             user = User.query.get(user_id)
             if not user:
                 return jsonify({"error": "User not found"}), 404
 
-            if new_role:
-                role = user_datastore.find_role(new_role)
-                if role:
-                    user_datastore.add_role_to_user(user, role)
+            if new_roles:
+                # Clear existing roles and assign new roles
+                user.roles.clear()
+                for role_name in new_roles:
+                    role = user_datastore.find_role(role_name)
+                    if role:
+                        user_datastore.add_role_to_user(user, role)
 
             if active_status is not None:
                 user.active = active_status
@@ -291,3 +294,13 @@ def init_routes(app):
         except Exception as e:
             app.logger.error(f"Error deleting user: {e}")
             return jsonify({"error": "Failed to delete user"}), 500
+
+    # Get Roles
+    @app.route('/get_roles', methods=['GET'])
+    def get_roles():
+        try:
+            roles = [role.name for role in Role.query.all()]
+            return jsonify({"roles": roles}), 200
+        except Exception as e:
+            app.logger.error(f"Error fetching roles: {e}")
+            return jsonify({"error": "Failed to fetch roles"}), 500

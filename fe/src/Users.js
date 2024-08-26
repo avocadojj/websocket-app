@@ -3,11 +3,13 @@ import axios from 'axios';
 
 const Users = () => {
     const [users, setUsers] = useState([]);
+    const [roles, setRoles] = useState([]);
     const [newUser, setNewUser] = useState({ email: '', password: '', role: '' });
     const [message, setMessage] = useState('');
 
     useEffect(() => {
         fetchUsers();
+        fetchRoles();
     }, []);
 
     const fetchUsers = async () => {
@@ -16,6 +18,20 @@ const Users = () => {
             setUsers(response.data.users);
         } catch (error) {
             console.error("Error fetching users:", error);
+        }
+    };
+
+    const fetchRoles = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/get_roles');
+            const fetchedRoles = response.data.roles;
+            setRoles(fetchedRoles);
+            if (fetchedRoles.length > 0) {
+                setNewUser(currentUser => ({ ...currentUser, role: fetchedRoles[0] }));
+            }
+        } catch (error) {
+            console.error("Error fetching roles:", error);
+            setMessage("Failed to fetch roles.");
         }
     };
 
@@ -35,7 +51,7 @@ const Users = () => {
         }
     };
 
-    const handleDeleteUser = async (id) => {
+    const handleDeleteUser = async (id) => {  // Ensure this function is defined
         try {
             const response = await axios.post('http://localhost:5000/delete_user', { id });
             setMessage(response.data.message);
@@ -46,7 +62,7 @@ const Users = () => {
         }
     };
 
-    const handleUpdateUser = async (id, active, role) => {
+    const handleUpdateUser = async (id, active, role) => {  // Ensure this function is defined
         try {
             const response = await axios.post('http://localhost:5000/update_user', { id, active, role });
             setMessage(response.data.message);
@@ -77,13 +93,15 @@ const Users = () => {
                 value={newUser.password}
                 onChange={handleInputChange}
             />
-            <input
-                type="text"
+            <select
                 name="role"
-                placeholder="Role"
                 value={newUser.role}
                 onChange={handleInputChange}
-            />
+            >
+                {roles.map((role, index) => (
+                    <option key={index} value={role}>{role}</option>
+                ))}
+            </select>
             <button onClick={handleCreateUser}>Create User</button>
 
             <h2>Existing Users</h2>
@@ -93,10 +111,10 @@ const Users = () => {
                         <p>Email: {user.email}</p>
                         <p>Role: {user.roles.join(', ')}</p>
                         <p>Active: {user.active ? 'Yes' : 'No'}</p>
-                        <button onClick={() => handleDeleteUser(user.id)}>Delete</button>
+                        <button onClick={() => handleDeleteUser(user.id)}>Delete</button>  {/* Reference the correct function */}
                         <button onClick={() => handleUpdateUser(user.id, !user.active, user.roles[0])}>
                             Toggle Active
-                        </button>
+                        </button>  {/* Reference the correct function */}
                     </li>
                 ))}
             </ul>
