@@ -1,13 +1,25 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const Header = ({ onLogout, onRefresh }) => {
+    const navigate = useNavigate();
+
+    const handleManageUsers = () => {
+        navigate('/users');
+    };
+
+    const handleBack = () => {
+        navigate(-1);
+    };
+
+
     return (
         <header>
           <div>
             <button onClick={onRefresh}>Refresh</button>
             <button onClick={onLogout}>Logout</button>
-            <Link to="/users">Manage Users</Link> {/* Add link to user management */}
+            <button onClick={handleManageUsers}>Manage Users</button>
+            <button onClick={handleBack}>Back</button>            
           </div>
         </header>
     );

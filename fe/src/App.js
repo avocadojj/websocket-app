@@ -32,10 +32,9 @@ const Transactions = ({ userId, onRefresh }) => {
       })
       .catch(error => {
         console.error("Error fetching transactions:", error);
-        alert('Error fetching transactions: ' + error.message);  // Add this line to alert errors
+        alert('Error fetching transactions: ' + error.message);
       });
   }, [currentPage, pageSize, orderId, customerId]);
-
 
   useEffect(() => {
     fetchTransactions();
@@ -115,7 +114,7 @@ const Transactions = ({ userId, onRefresh }) => {
 
   return (
     <div>
-      <Header onLogout={onRefresh} onRefresh={fetchTransactions} /> {/* Add Header here */}
+      <Header onLogout={onRefresh} onRefresh={fetchTransactions} />
 
       <h1>Transactions</h1>
 
@@ -128,8 +127,6 @@ const Transactions = ({ userId, onRefresh }) => {
             <option value={20}>20</option>
             <option value={50}>50</option>
             <option value={100}>100</option>
-            <option value={500}>500</option>
-            <option value={1000}>1000</option>
           </select>
         </label>
       </div>
@@ -226,19 +223,19 @@ const App = () => {
 
   const handleLogout = async () => {
     try {
-        const response = await fetch('http://localhost:5000/logout', {
-            method: 'POST',
-            credentials: 'include',
-        });
-        if (response.ok) {
-            console.log("Logged out successfully");
-            setIsAuthenticated(false);
-            setUserId(null);
-        } else {
-            console.error("Logout failed");
-        }
+      const response = await fetch('http://localhost:5000/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (response.ok) {
+        console.log("Logged out successfully");
+        setIsAuthenticated(false);
+        setUserId(null);
+      } else {
+        console.error("Logout failed");
+      }
     } catch (error) {
-        console.error("An error occurred during logout", error);
+      console.error("An error occurred during logout", error);
     }
   };
 
@@ -248,7 +245,7 @@ const App = () => {
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
         <Route path="/forgot_password" element={<ForgotPassword />} />
         <Route path="/" element={isAuthenticated ? <Transactions userId={userId} onRefresh={handleLogout} /> : <Navigate to="/login" />} />
-        <Route path="/users" element={<Users />} /> {/* Add route for Users */}
+        <Route path="/users" element={isAuthenticated ? <Users /> : <Navigate to="/login" />} /> {/* Add authentication check for /users */}
       </Routes>
     </Router>
   );

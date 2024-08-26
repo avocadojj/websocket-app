@@ -11,16 +11,12 @@ const Login = ({ onLogin }) => {
     event.preventDefault();
 
     try {
-      // Get the CSRF token from the cookies
       const csrfToken = Cookies.get('csrf_token');
-
-      // Send login request with CSRF token
       const response = await axios.post('http://localhost:5000/login', {
         email,
         password,
-        csrf_token: csrfToken,  // Include CSRF token in the request
+        csrf_token: csrfToken,
       });
-
       onLogin(response.data.user_id);
     } catch (error) {
       console.error("Login failed:", error);
