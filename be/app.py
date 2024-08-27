@@ -17,7 +17,7 @@ app.config.from_object(DevelopmentConfig)  # Use the config
 app.config['WTF_CSRF_ENABLED'] = False
 
 # Initialize CORS and SocketIO
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 socketio = SocketIO(app, cors_allowed_origins=app.config['CORS_ALLOWED_ORIGINS'])
 
 # Setup Elasticsearch client with basic authentication

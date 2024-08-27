@@ -5,7 +5,7 @@ from flask_security.utils import hash_password, send_mail
 from datetime import datetime
 import pytz
 from app import es, socketio, user_datastore, db
-from models import Role, User  # Ensure Role and User models are imported
+from models import Role, User
 
 # Define the global variable `latest_timestamp` at the module level
 latest_timestamp = None
@@ -154,6 +154,14 @@ def init_routes(app):
     def create_user():
         app.logger.info("Processing /create_user request")
         try:
+            if not current_user.is_authenticated:
+                app.logger.warning("User is not authenticated")
+                return jsonify({"error": "Not authenticated"}), 403
+
+            if 'Admin' not in [role.name for role in current_user.roles]:
+                app.logger.warning(f"User {current_user.email} does not have the Admin role")
+                return jsonify({"error": "Forbidden"}), 403
+
             data = request.json
             email = data['email']
             password = data['password']
@@ -169,10 +177,18 @@ def init_routes(app):
             role = user_datastore.find_role(role_name)
             if role:
                 user_datastore.add_role_to_user(user, role)
+            else:
+                app.logger.warning(f"Role {role_name} does not exist")
+                return jsonify({"error": f"Role {role_name} does not exist"}), 400
 
             db.session.commit()
             app.logger.info(f"User {email} created successfully with role {role_name}")
             return jsonify({"message": f"User {email} created with role {role_name}"}), 201
+
+        except Exception as e:
+            app.logger.error(f"Error creating user: {e}")
+            return jsonify({"error": "Failed to create user"}), 500
+
 
         except Exception as e:
             app.logger.error(f"Error creating user: {e}")
@@ -194,6 +210,7 @@ def init_routes(app):
                 if user.verify_and_update_password(password):
                     app.logger.debug("Password verified successfully")
                     login_user(user)
+                    app.logger.debug(f"User logged in successfully: {session}")
                     return jsonify({"message": "Logged in successfully", "user_id": user.id})
                 else:
                     app.logger.warning("Password verification failed")
@@ -205,6 +222,7 @@ def init_routes(app):
         except Exception as e:
             app.logger.error(f"Error during login: {e}")
             return jsonify({"error": "Login failed"}), 500
+
 
     @app.route('/forgot_password', methods=['POST'])
     def forgot_password():
