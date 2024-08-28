@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import axios from 'axios';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import PropTypes from 'prop-types'; // Import PropTypes
 import Login from './Login';
 import ForgotPassword from './ForgotPassword';
 import Header from './Header';
@@ -18,46 +19,78 @@ const Layout = ({ children, userEmail, loginTimestamp, onLogout, onRefresh }) =>
     );
 };
 
+Layout.propTypes = {
+    children: PropTypes.node.isRequired,
+    userEmail: PropTypes.string,
+    loginTimestamp: PropTypes.string,
+    onLogout: PropTypes.func.isRequired,
+    onRefresh: PropTypes.func,
+};
+
 const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
     const [transactions, setTransactions] = useState([]);
     const [pageSize, setPageSize] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
-    const [inputPage, setInputPage] = useState(currentPage);
+    const [inputPage, setInputPage] = useState(1);
     const [orderId, setOrderId] = useState('');
     const [customerId, setCustomerId] = useState('');
     const [newDataAvailable, setNewDataAvailable] = useState(false);
     const [highlightedIds, setHighlightedIds] = useState([]);
+    const [selectedIndex, setSelectedIndex] = useState('');
+    const [indices, setIndices] = useState([]); // State for indices
 
-    const fetchTransactions = useCallback(() => {
-        axios.get('http://localhost:5000/get_transactions', {
-            params: {
-                index: 'test',
-                page: currentPage,
-                size: pageSize,
-                order_id: orderId,
-                customer_id: customerId,
-            }
-        })
+    // Fetch available indices from the backend
+    const fetchIndices = useCallback(() => {
+        axios.get('http://localhost:5000/get_indices')
             .then(response => {
-                const newTransactions = response.data.transactions;
-                setTransactions(newTransactions);
-
-                if (newDataAvailable) {
-                    const newIds = newTransactions.map(tx => tx.id);
-                    setHighlightedIds(newIds);
-                    setTimeout(() => setHighlightedIds([]), 3000);
+                const indexList = response.data.indices || [];
+                setIndices(indexList);
+                if (indexList.length > 0) {
+                    setSelectedIndex(indexList[0]); // Set the first index as the default
                 }
             })
             .catch(error => {
-                console.error("Error fetching transactions:", error);
-                alert('Error fetching transactions: ' + error.message);
+                console.error("Error fetching indices:", error);
+                alert('Error fetching indices: ' + error.message);
             });
-    }, [currentPage, pageSize, orderId, customerId, newDataAvailable]);
+    }, []);
+
+    // Fetch transactions data
+    const fetchTransactions = useCallback(() => {
+        if (!selectedIndex) return;
+        axios.get('http://localhost:5000/get_transactions', {
+            params: {
+                index: selectedIndex,
+                page: currentPage,
+                size: pageSize,
+                order_id: orderId || null,
+                customer_id: customerId || null,
+            }
+        })
+        .then(response => {
+            const newTransactions = response.data.transactions || [];
+            setTransactions(newTransactions);
+
+            if (newDataAvailable) {
+                const newIds = newTransactions.map(tx => tx.id);
+                setHighlightedIds(newIds);
+                setTimeout(() => setHighlightedIds([]), 3000);
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching transactions:", error);
+            alert('Error fetching transactions: ' + error.message);
+        });
+    }, [selectedIndex, currentPage, pageSize, orderId, customerId, newDataAvailable]);
 
     const handleRefresh = () => {
         setNewDataAvailable(false);
         fetchTransactions();
     };
+
+    useEffect(() => {
+        fetchIndices();
+    }, [fetchIndices]);
 
     useEffect(() => {
         fetchTransactions();
@@ -82,35 +115,39 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
 
     const addRemark = (id, remark) => {
         axios.post('http://localhost:5000/save_remark', { id, remark })
-            .then(response => {
-                console.log("Remark saved:", response.data);
-            })
-            .catch(error => {
-                console.error("Error saving remark:", error);
-            });
+        .then(response => {
+            console.log("Remark saved:", response.data);
+        })
+        .catch(error => {
+            console.error("Error saving remark:", error);
+        });
     };
 
     const toggleTickbox = (id, tickbox) => {
         axios.post('http://localhost:5000/toggle_tickbox', { id, tickbox })
-            .then(response => {
-                console.log("Tickbox toggled:", response.data);
-            })
-            .catch(error => {
-                console.error("Error toggling tickbox:", error);
-            });
+        .then(response => {
+            console.log("Tickbox toggled:", response.data);
+        })
+        .catch(error => {
+            console.error("Error toggling tickbox:", error);
+        });
     };
 
-    const totalPages = Math.ceil(transactions.length / pageSize);
+    const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
 
     const handlePageSizeChange = (event) => {
-        setPageSize(parseInt(event.target.value, 10));
-        setCurrentPage(1);
+        const size = parseInt(event.target.value, 10);
+        if (!isNaN(size)) {
+            setPageSize(size);
+            setCurrentPage(1);
+        }
     };
 
     const handlePageChange = (event) => {
         const newPage = parseInt(event.target.value, 10);
-        if (newPage >= 1 && newPage <= totalPages) {
+        if (!isNaN(newPage) && newPage >= 1 && newPage <= totalPages) {
             setCurrentPage(newPage);
+            setInputPage(newPage);
         }
     };
 
@@ -120,14 +157,19 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
 
     const handleNextPage = () => {
         if (currentPage < totalPages) {
-            setCurrentPage(currentPage + 1);
+            setCurrentPage(prev => prev + 1);
         }
     };
 
     const handlePreviousPage = () => {
         if (currentPage > 1) {
-            setCurrentPage(currentPage - 1);
+            setCurrentPage(prev => prev - 1);
         }
+    };
+
+    const handleIndexChange = (event) => {
+        setSelectedIndex(event.target.value);
+        setCurrentPage(1);
     };
 
     return (
@@ -139,6 +181,17 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
                     New data is available! <button onClick={handleRefresh}>Refresh</button>
                 </div>
             )}
+
+            <div>
+                <label>
+                    Select Index:
+                    <select value={selectedIndex} onChange={handleIndexChange}>
+                        {indices.map((index) => (
+                            <option key={index} value={index}>{index}</option>
+                        ))}
+                    </select>
+                </label>
+            </div>
 
             <div>
                 <label>
@@ -192,22 +245,22 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
                             <td>
                                 <input
                                     type="checkbox"
-                                    checked={tx.tickbox}
+                                    checked={tx.tickbox || false}
                                     onChange={(e) => toggleTickbox(tx.id, e.target.checked)}
                                 />
                             </td>
                             <td>{tx.timestamp}</td>
-                            <td>{tx.data.customer_full_name}</td>
-                            <td>{tx.data.order_id}</td>
+                            <td>{tx.data?.customer_full_name || 'Unknown'}</td>
+                            <td>{tx.data?.order_id || 'N/A'}</td>
                             <td>
-                                {tx.data.products.map(product => (
+                                {tx.data?.products?.map(product => (
                                     <span key={product._id}>{product.product_name} (x{product.quantity})</span>
-                                )).reduce((prev, curr) => [prev, ', ', curr])}
+                                )).reduce((prev, curr) => [prev, ', ', curr], '')}
                             </td>
                             <td>
                                 <input
                                     type="text"
-                                    value={tx.remark}
+                                    value={tx.remark || ''}
                                     onChange={(e) => addRemark(tx.id, e.target.value)}
                                 />
                             </td>
@@ -233,6 +286,13 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
             </div>
         </div>
     );
+};
+
+Transactions.propTypes = {
+    userId: PropTypes.string,
+    userEmail: PropTypes.string,
+    loginTimestamp: PropTypes.string,
+    onLogout: PropTypes.func.isRequired,
 };
 
 const App = () => {
@@ -270,14 +330,53 @@ const App = () => {
 
     return (
         <Router>
-            <Layout userEmail={userEmail} loginTimestamp={loginTimestamp} onLogout={handleLogout} onRefresh={null}>
-                <Routes>
-                    <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
-                    <Route path="/forgot_password" element={<ForgotPassword />} />
-                    <Route path="/" element={isAuthenticated ? <Transactions userId={userId} userEmail={userEmail} loginTimestamp={loginTimestamp} onLogout={handleLogout} /> : <Navigate to="/login" />} />
-                    <Route path="/users" element={isAuthenticated ? <Users /> : <Navigate to="/login" />} />
-                </Routes>
-            </Layout>
+            <Routes>
+                <Route
+                    path="/login"
+                    element={isAuthenticated ? (
+                        <Navigate to="/" />
+                    ) : (
+                        <Login onLogin={handleLogin} />
+                    )}
+                />
+                <Route
+                    path="/forgot_password"
+                    element={<ForgotPassword />}
+                />
+                <Route
+                    path="/"
+                    element={isAuthenticated ? (
+                        <Layout
+                            userEmail={userEmail}
+                            loginTimestamp={loginTimestamp}
+                            onLogout={handleLogout}
+                        >
+                            <Transactions
+                                userId={userId}
+                                userEmail={userEmail}
+                                loginTimestamp={loginTimestamp}
+                                onLogout={handleLogout}
+                            />
+                        </Layout>
+                    ) : (
+                        <Navigate to="/login" />
+                    )}
+                />
+                <Route
+                    path="/users"
+                    element={isAuthenticated ? (
+                        <Layout
+                            userEmail={userEmail}
+                            loginTimestamp={loginTimestamp}
+                            onLogout={handleLogout}
+                        >
+                            <Users />
+                        </Layout>
+                    ) : (
+                        <Navigate to="/login" />
+                    )}
+                />
+            </Routes>
         </Router>
     );
 };

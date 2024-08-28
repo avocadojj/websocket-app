@@ -11,13 +11,15 @@ from models import Role, User
 latest_timestamp = None
 
 def init_routes(app):
+
     @app.route('/get_transactions', methods=['GET'])
     def get_transactions():
         global latest_timestamp
 
         app.logger.info("Processing /get_transactions request")
-        
+
         try:
+            # Retrieve query parameters with default values
             index = request.args.get('index', 'default_index')
             page = int(request.args.get('page', 1))
             size = int(request.args.get('size', 10))  # Default size to 10 if not provided
@@ -28,22 +30,22 @@ def init_routes(app):
 
             app.logger.debug(f"Index: {index}, Page: {page}, Size: {size}, From: {from_index}")
 
+            # Check if the index exists in Elasticsearch
             if not es.indices.exists(index=index):
                 app.logger.warning(f"Index '{index}' does not exist.")
                 return jsonify({"error": f"Index '{index}' does not exist."}), 404
 
-            # Base query to fetch transactions up to the current datetime
+            # Construct the base query to fetch transactions
             query = {
                 "query": {
                     "bool": {
-                        "must":[
+                        "must": [
                             {
                                 "range": {
-                                    "@timestamp":{
-                                        "lte":current_date
+                                    "@timestamp": {
+                                        "lte": current_date
                                     }
                                 }
-
                             }
                         ]
                     }
@@ -51,7 +53,7 @@ def init_routes(app):
                 "size": size,
                 "from": from_index,
                 "sort": [
-                    {"@timestamp": "desc"} # sort by timestamp descending
+                    {"@timestamp": "desc"}  # Sort by timestamp descending
                 ]
             }
 
@@ -60,7 +62,8 @@ def init_routes(app):
                 query["query"]["bool"]["must"].append({
                     "term": {"order_id": order_id}
                 })
-            # Add filtering by customer_id if provided            
+            
+            # Add filtering by customer_id if provided
             if customer_id:
                 query["query"]["bool"]["must"].append({
                     "term": {"customer_id": customer_id}
@@ -68,28 +71,33 @@ def init_routes(app):
 
             app.logger.debug(f"Elasticsearch query: {query}")
 
+            # Execute the query against Elasticsearch
             res = es.search(index=index, body=query)
-            transactions = res['hits']['hits']
+            transactions = res.get('hits', {}).get('hits', [])
 
             app.logger.debug(f"Number of transactions fetched: {len(transactions)}")
 
+            # Format the fetched transactions
             formatted_transactions = []
             for transaction in transactions:
-                source = transaction['_source']
-                # Converted timestamp to UTC+7
-                utc_timestamp = datetime.strptime(source['@timestamp'], "%Y-%m-%dT%H:%M:%S%z")
-                utc_plus_7 = utc_timestamp.astimezone(pytz.timezone('Asia/Bangkok'))
-                formatted_transactions.append({
-                    'id': transaction['_id'],
-                    'timestamp': utc_plus_7.isoformat(),
-                    'data': source,
-                    'tickbox': source.get('tickbox', False),
-                    'remark': source.get('remark', '')
-                })
+                source = transaction.get('_source', {})
+                utc_timestamp = source.get('@timestamp')
+                if utc_timestamp:
+                    try:
+                        utc_timestamp = datetime.strptime(utc_timestamp, "%Y-%m-%dT%H:%M:%S%z")
+                        utc_plus_7 = utc_timestamp.astimezone(pytz.timezone('Asia/Bangkok'))
+                        formatted_transactions.append({
+                            'id': transaction.get('_id', 'N/A'),
+                            'timestamp': utc_plus_7.isoformat(),
+                            'data': source,
+                            'tickbox': source.get('tickbox', False),
+                            'remark': source.get('remark', '')
+                        })
+                    except ValueError:
+                        app.logger.error(f"Error parsing timestamp: {utc_timestamp}")
 
-
-            #Check if there is new data based on the timestamp
-            new_timestamp = formatted_transactions[0]['timestamp'] if formatted_transactions else None 
+            # Check if there is new data based on the timestamp
+            new_timestamp = formatted_transactions[0]['timestamp'] if formatted_transactions else None
             if new_timestamp and (not latest_timestamp or new_timestamp > latest_timestamp):
                 latest_timestamp = new_timestamp
                 socketio.emit('new_data_available', {'message': 'New data available'})
@@ -97,7 +105,7 @@ def init_routes(app):
             app.logger.info("Successfully processed /get_transactions request")
 
             return jsonify({
-                "total": res['hits']['total']['value'],
+                "total": res.get('hits', {}).get('total', {}).get('value', 0),
                 "transactions": formatted_transactions
             })
 
@@ -105,14 +113,31 @@ def init_routes(app):
             app.logger.error(f"Error fetching transactions: {e}")
             return jsonify({"error": "Failed to fetch transactions"}), 500
 
+    @app.route('/get_indices', methods=['GET'])
+    def get_indices():
+        app.logger.info("Processing /get_indices request")
+        try:
+            # Fetch all indices
+            indices = es.indices.get_alias(index="*")
+            index_list = list(indices.keys())
+            app.logger.debug(f"Indices fetched: {index_list}")
+            return jsonify({"indices": index_list}), 200
+
+        except Exception as e:
+            app.logger.error(f"Error fetching indices: {e}")
+            return jsonify({"error": "Failed to fetch indices"}), 500
+
     @app.route('/save_remark', methods=['POST'])
     @auth_required()
     def save_remark():
         app.logger.info("Processing /save_remark request")
         try:
             data = request.json
-            doc_id = data['id']
-            remark = data['remark']
+            doc_id = data.get('id')
+            remark = data.get('remark')
+
+            if not doc_id or not isinstance(remark, str):
+                return jsonify({"error": "Invalid data provided"}), 400
 
             app.logger.debug(f"Document ID: {doc_id}, Remark: {remark}")
 
@@ -133,8 +158,11 @@ def init_routes(app):
         app.logger.info("Processing /toggle_tickbox request")
         try:
             data = request.json
-            doc_id = data['id']
-            tickbox = data['tickbox']
+            doc_id = data.get('id')
+            tickbox = data.get('tickbox')
+
+            if not doc_id or not isinstance(tickbox, bool):
+                return jsonify({"error": "Invalid data provided"}), 400
 
             app.logger.debug(f"Document ID: {doc_id}, Tickbox: {tickbox}")
 
@@ -163,9 +191,12 @@ def init_routes(app):
                 return jsonify({"error": "Forbidden"}), 403
 
             data = request.json
-            email = data['email']
-            password = data['password']
-            role_name = data['role']
+            email = data.get('email')
+            password = data.get('password')
+            role_name = data.get('role')
+
+            if not email or not password or not role_name:
+                return jsonify({"error": "Invalid data provided"}), 400
 
             app.logger.debug(f"Email: {email}, Role: {role_name}")
 
@@ -189,11 +220,6 @@ def init_routes(app):
             app.logger.error(f"Error creating user: {e}")
             return jsonify({"error": "Failed to create user"}), 500
 
-
-        except Exception as e:
-            app.logger.error(f"Error creating user: {e}")
-            return jsonify({"error": "Failed to create user"}), 500
-
     @app.route('/login', methods=['POST'])
     def login():
         app.logger.info("Processing /login request")
@@ -202,27 +228,25 @@ def init_routes(app):
             email = data.get('email')
             password = data.get('password')
 
+            if not email or not password:
+                return jsonify({"error": "Invalid email or password provided"}), 400
+
             app.logger.debug(f"Login attempt for email: {email}")
 
             user = user_datastore.find_user(email=email)
-            if user:
-                app.logger.debug(f"User found: {user.email}")
-                if user.verify_and_update_password(password):
-                    app.logger.debug("Password verified successfully")
-                    login_user(user)
-                    app.logger.debug(f"User logged in successfully: {session}")
-                    return jsonify({"message": "Logged in successfully", "user_id": user.id})
-                else:
-                    app.logger.warning("Password verification failed")
+            if user and user.verify_and_update_password(password):
+                app.logger.debug("Password verified successfully")
+                login_user(user)
+                app.logger.debug(f"User logged in successfully")
+                return jsonify({"message": "Logged in successfully", "user_id": user.id})
             else:
-                app.logger.warning("User not found")
+                app.logger.warning("Invalid credentials")
 
             return jsonify({"error": "Invalid email or password"}), 401
 
         except Exception as e:
             app.logger.error(f"Error during login: {e}")
             return jsonify({"error": "Login failed"}), 500
-
 
     @app.route('/forgot_password', methods=['POST'])
     def forgot_password():
@@ -282,7 +306,6 @@ def init_routes(app):
             app.logger.error(f"Error creating admin: {e}")
             return jsonify({"error": "Failed to create admin"}), 500
 
-    # Get all users
     @app.route('/get_users', methods=['GET'])
     @roles_required('Admin')
     def get_users():
@@ -335,7 +358,6 @@ def init_routes(app):
             app.logger.error(f"Error updating user: {e}")
             return jsonify({"error": "Failed to update user"}), 500
 
-    # Delete user
     @app.route('/delete_user', methods=['POST'])
     @roles_required('Admin')
     def delete_user():
@@ -355,7 +377,6 @@ def init_routes(app):
             app.logger.error(f"Error deleting user: {e}")
             return jsonify({"error": "Failed to delete user"}), 500
 
-    # Get Roles
     @app.route('/get_roles', methods=['GET'])
     def get_roles():
         try:
