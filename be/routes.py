@@ -122,7 +122,7 @@ def init_routes(app):
         app.logger.info("Processing /get_indices request")
         try:
             # Define the pattern or list of indices to fetch
-            selected_index_pattern = "test*,low-alert*,med-alert*,high-alert*"  # Use patterns or specific indices
+            selected_index_pattern = "low-alert*,med-alert*,high-alert*"  # Use patterns or specific indices
 
             # Fetch only the indices matching the pattern
             indices = es.indices.get_alias(index=selected_index_pattern)

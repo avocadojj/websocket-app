@@ -68,10 +68,8 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
         })
         .then(response => {
             const newTransactions = response.data.transactions || [];
-            
-            // Log the entire response for debugging purposes
-            console.log('API Response for index', selectedIndex, ':', response.data);
-            
+            console.log('Raw transactions data:', newTransactions);
+
             // Determine the new or updated transactions
             const newIds = newTransactions
                 .filter(tx => !transactions.some(existingTx => existingTx.id === tx.id && existingTx.timestamp === tx.timestamp))
