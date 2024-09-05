@@ -22,7 +22,14 @@ def init_routes(app):
             # Retrieve query parameters with default values
             index = request.args.get('index', 'default_index')
             page = int(request.args.get('page', 1))
-            size = int(request.args.get('size', 10))  # Default size to 10 if not provided
+
+            # Check if the size parameter is 'all' and set size accordingly
+            size_param = request.args.get('size', '10')
+            if size_param == 'all':
+                size = 10000  # Set a large number to fetch all results; adjust as needed
+            else:
+                size = int(size_param)
+
             from_index = (page - 1) * size
             order_id = request.args.get('order_id', None)
             customer_id = request.args.get('customer_id', None)
@@ -60,13 +67,13 @@ def init_routes(app):
             # Add filtering by order_id if provided
             if order_id:
                 query["query"]["bool"]["must"].append({
-                    "term": {"order_id": order_id}
+                    "term": {"Order ID.keyword": order_id}  # Adjust to match Elasticsearch field
                 })
-            
+
             # Add filtering by customer_id if provided
             if customer_id:
                 query["query"]["bool"]["must"].append({
-                    "term": {"customer_id": customer_id}
+                    "term": {"Customer ID.keyword": customer_id}  # Adjust to match Elasticsearch field
                 })
 
             app.logger.debug(f"Elasticsearch query: {query}")
@@ -82,19 +89,15 @@ def init_routes(app):
             for transaction in transactions:
                 source = transaction.get('_source', {})
                 utc_timestamp = source.get('@timestamp')
-                if utc_timestamp:
-                    try:
-                        utc_timestamp = datetime.strptime(utc_timestamp, "%Y-%m-%dT%H:%M:%S%z")
-                        utc_plus_7 = utc_timestamp.astimezone(pytz.timezone('Asia/Bangkok'))
-                        formatted_transactions.append({
-                            'id': transaction.get('_id', 'N/A'),
-                            'timestamp': utc_plus_7.isoformat(),
-                            'data': source,
-                            'tickbox': source.get('tickbox', False),
-                            'remark': source.get('remark', '')
-                        })
-                    except ValueError:
-                        app.logger.error(f"Error parsing timestamp: {utc_timestamp}")
+
+                # Append formatted transaction data
+                formatted_transactions.append({
+                    'id': transaction.get('_id', 'N/A'),
+                    'timestamp': utc_timestamp if utc_timestamp else 'N/A',
+                    'data': source,  # Include all data here
+                    'tickbox': source.get('tickbox', False),
+                    'remark': source.get('remark', '')
+                })
 
             # Check if there is new data based on the timestamp
             new_timestamp = formatted_transactions[0]['timestamp'] if formatted_transactions else None
@@ -113,15 +116,27 @@ def init_routes(app):
             app.logger.error(f"Error fetching transactions: {e}")
             return jsonify({"error": "Failed to fetch transactions"}), 500
 
+
     @app.route('/get_indices', methods=['GET'])
     def get_indices():
         app.logger.info("Processing /get_indices request")
         try:
-            # Fetch all indices
-            indices = es.indices.get_alias(index="*")
+            # Define the pattern or list of indices to fetch
+            selected_index_pattern = "test*,low-alert*,med-alert*,high-alert*"  # Use patterns or specific indices
+
+            # Fetch only the indices matching the pattern
+            indices = es.indices.get_alias(index=selected_index_pattern)
             index_list = list(indices.keys())
-            app.logger.debug(f"Indices fetched: {index_list}")
+
+            # Log the fetched indices
+            app.logger.debug(f"Fetched indices: {index_list}")
+
             return jsonify({"indices": index_list}), 200
+
+        except NotFoundError as e:
+            # More specific error handling for index not found
+            app.logger.error(f"Index not found: {e.info.get('index')}")
+            return jsonify({"error": f"Index not found: {e.info.get('index')}" }), 404
 
         except Exception as e:
             app.logger.error(f"Error fetching indices: {e}")
