@@ -5,29 +5,6 @@ import axios from 'axios';
 
 const socket = io('http://localhost:5000');
 
-// Helper function to format the date and time with milliseconds
-const formatDateTime = (timestamp) => {
-    if (!timestamp) return { date: 'N/A', time: 'N/A' };
-    const date = new Date(timestamp);
-
-    // Format date as DD/MM/YYYY
-    const formattedDate = new Intl.DateTimeFormat('en-GB', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-    }).format(date);
-
-    // Format time as HH:MM:SS.mmm (with milliseconds)
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
-
-    const formattedTime = `${hours}:${minutes}:${seconds}.${milliseconds}`;
-
-    return { date: formattedDate, time: formattedTime };
-};
-
 const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
     const [transactions, setTransactions] = useState([]);
     const [pageSize, setPageSize] = useState(10);
@@ -36,7 +13,7 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
     const [orderId, setOrderId] = useState('');
     const [customerId, setCustomerId] = useState('');
     const [newDataAvailable, setNewDataAvailable] = useState(false);
-    const [highlightedIds, setHighlightedIds] = useState([]);
+    const [expandedRows, setExpandedRows] = useState([]);
     const [selectedIndex, setSelectedIndex] = useState('');
     const [indices, setIndices] = useState([]);
 
@@ -70,23 +47,13 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
             const newTransactions = response.data.transactions || [];
             console.log('Raw transactions data:', newTransactions);
 
-            // Determine the new or updated transactions
-            const newIds = newTransactions
-                .filter(tx => !transactions.some(existingTx => existingTx.id === tx.id && existingTx.timestamp === tx.timestamp))
-                .map(tx => tx.id);
-
             setTransactions(newTransactions);
-
-            if (newIds.length > 0) {
-                setHighlightedIds(newIds); // Highlight only the new or updated transactions
-                setTimeout(() => setHighlightedIds([]), 3000); // Clear highlights after 3 seconds
-            }
         })
         .catch(error => {
             console.error("Error fetching transactions:", error);
             alert('Error fetching transactions: ' + error.message);
         });
-    }, [selectedIndex, currentPage, pageSize, orderId, customerId, transactions]);
+    }, [selectedIndex, currentPage, pageSize, orderId, customerId]);
 
     const handlePageChange = (event) => {
         const newPage = parseInt(event.target.value, 10);
@@ -108,6 +75,14 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
     const handlePreviousPage = () => {
         setCurrentPage(prev => Math.max(prev - 1, 1));
         setInputPage(prev => Math.max(prev - 1, 1));
+    };
+
+    const toggleRowExpansion = (id) => {
+        setExpandedRows((prevExpandedRows) => 
+            prevExpandedRows.includes(id) 
+                ? prevExpandedRows.filter(rowId => rowId !== id) 
+                : [...prevExpandedRows, id]
+        );
     };
 
     useEffect(() => {
@@ -187,6 +162,7 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                     <tr>
+                        <th></th> {/* Column for toggle button */}
                         <th>Date</th>
                         <th>Time</th>
                         <th>Customer Full Name</th>
@@ -203,30 +179,67 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
                 </thead>
                 <tbody>
                     {transactions.map((tx) => {
-                        const { date, time } = formatDateTime(tx.timestamp || tx.data['@timestamp']);
+                        const formattedDate = new Date(tx.timestamp || tx.data['@timestamp']).toLocaleDateString('en-GB');
+                        const formattedTime = new Date(tx.timestamp || tx.data['@timestamp']).toLocaleTimeString('en-GB', { hour12: false, second: '2-digit', millisecond: '3-digit' });
                         return (
-                            <tr key={tx.id} style={{ backgroundColor: highlightedIds.includes(tx.id) ? 'yellow' : 'transparent' }}>
-                                <td>{date}</td>
-                                <td>{time}</td>
-                                <td>{tx.data.customer_full_name || 'Unknown'}</td>
-                                <td>{tx.data.customer_id || 'N/A'}</td>
-                                <td>{tx.data.customer_gender || 'N/A'}</td>
-                                <td>{tx.data.geoip ? `${tx.data.geoip.city_name}, ${tx.data.geoip.region_name}, ${tx.data.geoip.country_iso_code}` : 'N/A'}</td>
-                                <td>{tx.data.order_id || 'N/A'}</td>
-                                <td>{tx.data.products ? tx.data.products.map(p => p.product_name).join(', ') : 'No Products'}</td>
-                                <td>{tx.data.taxful_total_price || 'N/A'}</td>
-                                <td>{tx.data.sku ? tx.data.sku.join(', ') : 'No SKUs'}</td>
-                                <td>
-                                    <select>
-                                        <option>Genuine</option>
-                                        <option>Fraudulent</option>
-                                        <option>Suspicious</option>
-                                    </select>
-                                </td>
-                                <td>
-                                    <input type="text" defaultValue={tx.remark} />
-                                </td>
-                            </tr>
+                            <React.Fragment key={tx.id}>
+                                <tr>
+                                    <td>
+                                        <button 
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer' }} 
+                                            onClick={() => toggleRowExpansion(tx.id)}
+                                        >
+                                            {expandedRows.includes(tx.id) ? '▼' : '▶'}
+                                        </button>
+                                    </td>
+                                    <td>{formattedDate}</td>
+                                    <td>{formattedTime}</td>
+                                    <td>{tx.data['Customer Name']}</td>
+                                    <td>{tx.data['Customer ID']}</td>
+                                    <td>{tx.data['Customer Gender']}</td>
+                                    <td>{`${tx.data['GeoIP City Name']}, ${tx.data['GeoIP Continent Name']}, ${tx.data['GeoIP Country ISO Code']}`}</td>
+                                    <td>{tx.data['Order ID']}</td>
+                                    <td>{tx.data.Products ? tx.data.Products.map(p => p['Product Name']).join(', ') : 'No Products'}</td>
+                                    <td>{tx.data['Total Price']}</td>
+                                    <td>{tx.data.SKU || 'No SKUs'}</td>
+                                    <td>
+                                        <select>
+                                            <option>Genuine</option>
+                                            <option>Fraudulent</option>
+                                            <option>Suspicious</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input type="text" defaultValue={tx.remark} />
+                                    </td>
+                                </tr>
+                                {expandedRows.includes(tx.id) && (
+                                    <tr>
+                                        <td colSpan="13">
+                                            <div style={{ padding: '10px', backgroundColor: '#f9f9f9' }}>
+                                                <h4>Transaction Details</h4>
+                                                {Object.entries(tx.data).map(([key, value]) => (
+                                                    key !== 'Products' && (
+                                                        <p key={key}>
+                                                            <strong>{key}:</strong> {typeof value === 'string' ? value : JSON.stringify(value)}
+                                                        </p>
+                                                    )
+                                                ))}
+                                                <h5>Products:</h5>
+                                                {tx.data.Products && tx.data.Products.map((product, index) => (
+                                                    <div key={index}>
+                                                        {Object.entries(product).map(([key, value]) => (
+                                                            <p key={key}>
+                                                                <strong>{key}:</strong> {value}
+                                                            </p>
+                                                        ))}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </React.Fragment>
                         );
                     })}
                 </tbody>
