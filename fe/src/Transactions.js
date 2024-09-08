@@ -55,6 +55,27 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
         });
     }, [selectedIndex, currentPage, pageSize, orderId, customerId]);
 
+    const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-GB'); // Format: DD/MM/YYYY
+    };
+
+    const formatTime = (dateString) => {
+        const date = new Date(dateString);
+        const hours = String(date.getUTCHours()).padStart(2, '0');
+        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+        const milliseconds = String(date.getUTCMilliseconds()).padStart(3, '0');
+        return `${hours}:${minutes}:${seconds},${milliseconds}`; // Format: HH:MM:SS,ms
+    };
+
+    const formatOrderTime = (dateString) => {
+        const date = new Date(dateString);
+        const formattedDate = date.toLocaleDateString('en-GB'); // Format: DD/MM/YYYY
+        const formattedTime = formatTime(dateString); // Format: HH:MM:SS,ms
+        return `${formattedDate}, ${formattedTime}`;
+    };
+
     const handlePageChange = (event) => {
         const newPage = parseInt(event.target.value, 10);
         if (!isNaN(newPage) && newPage >= 1) {
@@ -158,13 +179,14 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
                 </label>
             </div>
 
-            {/* Show transaction data with highlight */}
+            {/* Table to show transaction data */}
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                     <tr>
                         <th></th> {/* Column for toggle button */}
                         <th>Date</th>
                         <th>Time</th>
+                        <th>Order Time</th> {/* New Order Time Column */}
                         <th>Customer Full Name</th>
                         <th>Customer ID</th>
                         <th>Customer Gender</th>
@@ -172,15 +194,16 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
                         <th>Order ID</th>
                         <th>Products</th>
                         <th>Total Price</th>
-                        <th>SKU</th>
                         <th>Label</th>
                         <th>Remark</th>
                     </tr>
                 </thead>
                 <tbody>
                     {transactions.map((tx) => {
-                        const formattedDate = new Date(tx.timestamp || tx.data['@timestamp']).toLocaleDateString('en-GB');
-                        const formattedTime = new Date(tx.timestamp || tx.data['@timestamp']).toLocaleTimeString('en-GB', { hour12: false, second: '2-digit', millisecond: '3-digit' });
+                        const formattedDate = formatDate(tx.timestamp || tx.data['@timestamp']);
+                        const formattedTime = formatTime(tx.timestamp || tx.data['@timestamp']);
+                        const formattedOrderTime = tx.data['Order Time'] ? formatOrderTime(tx.data['Order Time']) : 'N/A'; // Format Order Time
+
                         return (
                             <React.Fragment key={tx.id}>
                                 <tr>
@@ -194,6 +217,7 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
                                     </td>
                                     <td>{formattedDate}</td>
                                     <td>{formattedTime}</td>
+                                    <td>{formattedOrderTime}</td> {/* Display Order Time */}
                                     <td>{tx.data['Customer Name']}</td>
                                     <td>{tx.data['Customer ID']}</td>
                                     <td>{tx.data['Customer Gender']}</td>
@@ -201,7 +225,6 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
                                     <td>{tx.data['Order ID']}</td>
                                     <td>{tx.data.Products ? tx.data.Products.map(p => p['Product Name']).join(', ') : 'No Products'}</td>
                                     <td>{tx.data['Total Price']}</td>
-                                    <td>{tx.data.SKU || 'No SKUs'}</td>
                                     <td>
                                         <select>
                                             <option>Genuine</option>
