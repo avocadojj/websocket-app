@@ -18,6 +18,7 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
     const [expandedRows, setExpandedRows] = useState([]);
     const [selectedIndex, setSelectedIndex] = useState('');
     const [indices, setIndices] = useState([]);
+    const [totalTransactions, setTotalTransactions] = useState(0); // To track total number of transactions
 
     const fetchIndices = useCallback(() => {
         axios.get('http://localhost:5000/get_indices')
@@ -47,9 +48,11 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
         })
         .then(response => {
             const newTransactions = response.data.transactions || [];
+            const total = response.data.total || 0; // Get total count from the response
             console.log('Raw transactions data:', newTransactions);
 
             setTransactions(newTransactions);
+            setTotalTransactions(total); // Update total transactions count
         })
         .catch(error => {
             console.error("Error fetching transactions:", error);
@@ -59,7 +62,8 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
 
     const handlePageChange = (event) => {
         const newPage = parseInt(event.target.value, 10);
-        if (!isNaN(newPage) && newPage >= 1) {
+        const maxPage = Math.ceil(totalTransactions / pageSize); // Calculate max page
+        if (!isNaN(newPage) && newPage >= 1 && newPage <= maxPage) {
             setCurrentPage(newPage);
             setInputPage(newPage);
         }
@@ -70,13 +74,18 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
     };
 
     const handleNextPage = () => {
-        setCurrentPage(prev => prev + 1);
-        setInputPage(prev => prev + 1);
+        const maxPage = Math.ceil(totalTransactions / pageSize); // Calculate max page
+        if (currentPage < maxPage) {
+            setCurrentPage(prev => prev + 1);
+            setInputPage(prev => prev + 1);
+        }
     };
 
     const handlePreviousPage = () => {
-        setCurrentPage(prev => Math.max(prev - 1, 1));
-        setInputPage(prev => Math.max(prev - 1, 1));
+        if (currentPage > 1) {
+            setCurrentPage(prev => Math.max(prev - 1, 1));
+            setInputPage(prev => Math.max(prev - 1, 1));
+        }
     };
 
     const toggleRowExpansion = (id) => {
@@ -178,7 +187,7 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
                     min="1"
                     style={{ width: "50px", textAlign: "center" }}
                 />
-                <button onClick={handleNextPage}>Next</button>
+                <button onClick={handleNextPage} disabled={currentPage >= Math.ceil(totalTransactions / pageSize)}>Next</button>
             </div>
         </div>
     );
