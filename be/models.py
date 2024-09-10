@@ -41,3 +41,22 @@ class User(db.Model, UserMixin):
         super().__init__(**kwargs)
         if not self.fs_uniquifier:
             self.fs_uniquifier = str(uuid.uuid4())
+
+# Blacklist DB
+class Blacklist(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    entity_name = db.Column(db.String(100), nullable=False)
+    entity_type = db.Column(db.String(50), nullable=False)  # e.g., "Customer", "Sales", "Phone", "Address"
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'entity_name': self.entity_name,
+            'entity_type': self.entity_type,
+            'description': self.description,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at,
+        }
