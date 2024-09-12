@@ -1,11 +1,12 @@
-import logging
 from flask import jsonify, request
 from flask_security import roles_required, auth_required, current_user, logout_user, login_user
 from flask_security.utils import hash_password, send_mail
 from datetime import datetime
-import pytz
 from app import es, socketio, user_datastore, db
-from models import Role, User
+from models import Role, User, Blacklist
+from datetime import datetime
+import csv
+import io
 
 # Define the global variable `latest_timestamp` at the module level
 latest_timestamp = None
@@ -400,3 +401,121 @@ def init_routes(app):
         except Exception as e:
             app.logger.error(f"Error fetching roles: {e}")
             return jsonify({"error": "Failed to fetch roles"}), 500
+
+    @app.route('/blacklist', methods=['GET'])
+    def get_blacklist():
+        app.logger.info("Fetching all blacklisted entities")
+        try:
+            blacklist = Blacklist.query.all()
+            result = [
+                {
+                    "id": entry.id,
+                    "entity_type": entry.entity_type,
+                    "entity_value": entry.entity_value,
+                    "created_at": entry.created_at,
+                    "description": entry.description
+                }
+                for entry in blacklist
+            ]
+            return jsonify({"blacklist": blacklist}), 200
+        except Exception as e:
+            app.logger.error(f"Error fetching blacklist: {e}")
+            return jsonify({"error": "Failed to fetch blacklist"}), 500
+
+    @app.route('/blacklist/<int:id>', methods=['GET'])
+    def get_blacklist_entry(id):
+        app.logger.info(f"Fetching blacklist entry with ID: {id}")
+        try:
+            entry = Blacklist.query.get_or_404(id)
+            result = {
+                    "id": entry.id,
+                    "entity_type": entry.entity_type,
+                    "entity_value": entry.entity_value,
+                    "created_at": entry.created_at,
+                    "description": entry.description
+            }
+            return jsonify({"blacklist": result}), 200
+        except Exception as e:
+            app.logger.error(f"Error fetching blacklist by ID: {e}")
+            return jsonify({"error": "Failed to fetch blacklist by ID"}), 500
+    
+    @app.route('/blacklist/upload', methods=['POST'])
+    def upload_blacklist():
+        """Upload a CSV file and add entries to the blacklist."""
+        app.logger.info("Uploading CSV to update the blacklist")
+        try:
+            # Check if the file part is in the request
+            if 'file' not in request.files:
+                return jsonify({"error": "No file provided"}), 400
+
+            file = request.files['file']
+
+            # Check if the file has a valid filename
+            if file.filename == '':
+                return jsonify({"error": "No file selected"}), 400
+
+            # Read the uploaded CSV file
+            file_data = file.read().decode('utf-8').strip()  # Remove any leading or trailing whitespace
+            csv_input = csv.reader(file_data.splitlines())
+
+            # Skip the header row
+            next(csv_input)
+
+            # Process each row in the CSV
+            for row in csv_input:
+                # Strip whitespace from each field and ignore empty rows
+                row = [field.strip() for field in row]
+                if len(row) != 4 or not any(row):
+                    app.logger.error(f"Invalid row format: {row}")
+                    continue  # Skip invalid or empty rows
+
+                entity_type, entity_value, description, created_at = row
+                blacklist_entry = Blacklist(
+                    entity_type=entity_type,
+                    entity_value=entity_value,
+                    description=description,
+                    created_at=created_at
+                )
+                db.session.add(blacklist_entry)
+
+            # Commit all changes to the database
+            db.session.commit()
+
+            return jsonify({"message": "CSV uploaded and processed successfully"}), 200
+
+        except Exception as e:
+            app.logger.error(f"Failed to process CSV upload: {e}")
+            return jsonify({"error": "Failed to process CSV upload"}), 500
+    
+    @app.route('/export_blacklist', methods=['GET'])
+    def export_blacklist():
+        """Endpoint o export the blacklist data to a CSV file"""
+        app.logger.info("Exporting blacklist data to CSV")
+        try:
+            export_blacklist_csv()
+            return jsonify({"message": "Blacklist exported successfully"}), 200
+        except Exception as e:
+            app.logger.error(f"Error exporting blacklist: {e}")
+            return jsonify({"error": "Failed to export blacklist"}), 500
+
+    def export_blacklist_csv():
+        try:
+            """Export the blacklist data to a CSV file with a date in the file name."""
+            # Fetch data blacklist entries
+            blacklist_entries = Blacklist.query.all()
+            # Get the current date
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            # Define the CSV file path
+            csv_file_path = 'blacklist_export_{current_date}.csv'
+            # Write the data to the CSV file
+            with open(csv_file_path, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                # Write the header row
+                writer.writerow(['ID', 'Entity Type', 'Entity Value','Description', 'Created At'])
+                # Write the data rows
+                for entry in blacklist_entries:
+                    writer.writerow([entry.id, entry.entity_type, entry.entity_value, entry.created_at])                
+            print(f"Blacklist exported to CSV successfully: {csv_file_path}")
+        except Exception as e:
+            print(f"Failed to export blacklist to CSV: {e}")
+
