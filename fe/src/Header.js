@@ -8,18 +8,23 @@ const Header = ({ userEmail, loginTimestamp, onLogout, onRefresh }) => {
         navigate('/users');
     };
 
+    const handleManageBlacklist = () => {
+        navigate('/blacklist');
+    };
+
     const handleBack = () => {
         navigate(-1);
     };
 
     return (
-        <header>
+        <header>z
             <div>
                 <p>Hello, {userEmail} @ {loginTimestamp}</p> {/* Display user info and login timestamp */}
                 <button onClick={onRefresh}>Refresh</button>
                 <button onClick={onLogout}>Logout</button>
                 <button onClick={handleManageUsers}>Manage Users</button>
                 <button onClick={handleBack}>Back</button>
+                <button onClick={handleManageBlacklist}>Manage Blacklist</button>
             </div>
         </header>
     );
