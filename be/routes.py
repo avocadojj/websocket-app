@@ -1,33 +1,37 @@
-from flask import jsonify, request, make_response, session, current_app
+import logging
+from flask import jsonify, request
 from flask_security import roles_required, auth_required, current_user, logout_user, login_user
-from flask_security.utils import hash_password
-from app import es, socketio, user_datastore, db
-from models import Role, User, Blacklist
+from flask_security.utils import hash_password, send_mail
 from datetime import datetime
+from models import Blacklist
+import pytz
+from app import es, socketio, user_datastore, db
+from models import Role, User
 import csv
-import secrets
 
 # Define the global variable `latest_timestamp` at the module level
 latest_timestamp = None
 
 def init_routes(app):
 
-    @app.route('/home', methods=['GET'])
-    def home():
-        """Serve the home page."""
-        return jsonify({"message": "Welcome to the Home Page!"}), 200
-
     @app.route('/get_transactions', methods=['GET'])
     def get_transactions():
         global latest_timestamp
+
         app.logger.info("Processing /get_transactions request")
 
         try:
             # Retrieve query parameters with default values
             index = request.args.get('index', 'default_index')
             page = int(request.args.get('page', 1))
+
+            # Check if the size parameter is 'all' and set size accordingly
             size_param = request.args.get('size', '10')
-            size = 10000 if size_param == 'all' else int(size_param)
+            if size_param == 'all':
+                size = 10000  # Set a large number to fetch all results; adjust as needed
+            else:
+                size = int(size_param)
+
             from_index = (page - 1) * size
             order_id = request.args.get('order_id', None)
             customer_id = request.args.get('customer_id', None)
@@ -45,19 +49,34 @@ def init_routes(app):
                 "query": {
                     "bool": {
                         "must": [
-                            {"range": {"@timestamp": {"lte": current_date}}}
+                            {
+                                "range": {
+                                    "@timestamp": {
+                                        "lte": current_date
+                                    }
+                                }
+                            }
                         ]
                     }
                 },
                 "size": size,
                 "from": from_index,
-                "sort": [{"@timestamp": "desc"}]  # Sort by timestamp descending
+                "sort": [
+                    {"@timestamp": "desc"}  # Sort by timestamp descending
+                ]
             }
 
+            # Add filtering by order_id if provided
             if order_id:
-                query["query"]["bool"]["must"].append({"term": {"Order ID.keyword": order_id}})
+                query["query"]["bool"]["must"].append({
+                    "term": {"Order ID.keyword": order_id}  # Adjust to match Elasticsearch field
+                })
+
+            # Add filtering by customer_id if provided
             if customer_id:
-                query["query"]["bool"]["must"].append({"term": {"Customer ID.keyword": customer_id}})
+                query["query"]["bool"]["must"].append({
+                    "term": {"Customer ID.keyword": customer_id}  # Adjust to match Elasticsearch field
+                })
 
             app.logger.debug(f"Elasticsearch query: {query}")
 
@@ -66,19 +85,22 @@ def init_routes(app):
             transactions = res.get('hits', {}).get('hits', [])
             app.logger.debug(f"Number of transactions fetched: {len(transactions)}")
 
+            # Format the fetched transactions
             formatted_transactions = []
             for transaction in transactions:
                 source = transaction.get('_source', {})
                 utc_timestamp = source.get('@timestamp')
 
+                # Append formatted transaction data
                 formatted_transactions.append({
                     'id': transaction.get('_id', 'N/A'),
                     'timestamp': utc_timestamp if utc_timestamp else 'N/A',
-                    'data': source,
+                    'data': source,  # Include all data here
                     'tickbox': source.get('tickbox', False),
                     'remark': source.get('remark', '')
                 })
 
+            # Check if there is new data based on the timestamp
             new_timestamp = formatted_transactions[0]['timestamp'] if formatted_transactions else None
             if new_timestamp and (not latest_timestamp or new_timestamp > latest_timestamp):
                 latest_timestamp = new_timestamp
@@ -86,6 +108,7 @@ def init_routes(app):
 
             app.logger.info("Successfully processed /get_transactions request")
 
+            # Add the total count of transactions in the response
             return jsonify({
                 "total": res.get('hits', {}).get('total', {}).get('value', 0),
                 "transactions": formatted_transactions
@@ -94,6 +117,7 @@ def init_routes(app):
             app.logger.error(f"Error fetching transactions: {e}")
             return jsonify({"error": "Failed to fetch transactions"}), 500
 
+
     @app.route('/get_indices', methods=['GET'])
     def get_indices():
         app.logger.info("Processing /get_indices request")
@@ -101,6 +125,8 @@ def init_routes(app):
             selected_index_pattern = "low-alert*,med-alert*,high-alert*"
             indices = es.indices.get_alias(index=selected_index_pattern)
             index_list = list(indices.keys())
+
+            # Log the fetched indices
             app.logger.debug(f"Fetched indices: {index_list}")
 
             return jsonify({"indices": index_list}), 200
@@ -151,12 +177,106 @@ def init_routes(app):
             socketio.emit('transaction_updated', {'id': doc_id, 'tickbox': tickbox})
 
             app.logger.info("Successfully toggled tickbox")
+
             return jsonify({"status": "success"})
 
         except Exception as e:
             app.logger.error(f"Error toggling tickbox: {e}")
             return jsonify({"error": "Failed to toggle tickbox"}), 500
 
+    @app.route('/create_user', methods=['POST'])
+    @roles_required('Admin')
+    def create_user():
+        app.logger.info("Processing /create_user request")
+        try:
+            if not current_user.is_authenticated:
+                app.logger.warning("User is not authenticated")
+                return jsonify({"error": "Not authenticated"}), 403
+
+            if 'Admin' not in [role.name for role in current_user.roles]:
+                app.logger.warning(f"User {current_user.email} does not have the Admin role")
+                return jsonify({"error": "Forbidden"}), 403
+
+            data = request.json
+            email = data.get('email')
+            password = data.get('password')
+            role_name = data.get('role')
+
+            if not email or not password or not role_name:
+                return jsonify({"error": "Invalid data provided"}), 400
+
+            app.logger.debug(f"Email: {email}, Role: {role_name}")
+
+            if user_datastore.find_user(email=email):
+                app.logger.warning(f"User with email {email} already exists")
+                return jsonify({"error": "User already exists"}), 400
+
+            user = user_datastore.create_user(email=email, password=hash_password(password))
+            role = user_datastore.find_role(role_name)
+            if role:
+                user_datastore.add_role_to_user(user, role)
+            else:
+                app.logger.warning(f"Role {role_name} does not exist")
+                return jsonify({"error": f"Role {role_name} does not exist"}), 400
+
+            db.session.commit()
+            app.logger.info(f"User {email} created successfully with role {role_name}")
+            return jsonify({"message": f"User {email} created with role {role_name}"}), 201
+
+        except Exception as e:
+            app.logger.error(f"Error creating user: {e}")
+            return jsonify({"error": "Failed to create user"}), 500
+
+    @app.route('/login', methods=['POST'])
+    def login():
+        app.logger.info("Processing /login request")
+        try:
+            data = request.json
+            email = data.get('email')
+            password = data.get('password')
+
+            if not email or not password:
+                return jsonify({"error": "Invalid email or password provided"}), 400
+
+            app.logger.debug(f"Login attempt for email: {email}")
+
+            user = user_datastore.find_user(email=email)
+            if user and user.verify_and_update_password(password):
+                app.logger.debug("Password verified successfully")
+                login_user(user)
+                app.logger.debug(f"User logged in successfully")
+                return jsonify({"message": "Logged in successfully", "user_id": user.id})
+            else:
+                app.logger.warning("Invalid credentials")
+
+            return jsonify({"error": "Invalid email or password"}), 401
+
+        except Exception as e:
+            app.logger.error(f"Error during login: {e}")
+            return jsonify({"error": "Login failed"}), 500
+
+    @app.route('/forgot_password', methods=['POST'])
+    def forgot_password():
+        app.logger.info("Processing /forgot_password request")
+        try:
+            data = request.json
+            email = data.get('email')
+
+            user = user_datastore.find_user(email=email)
+            if user:
+                send_reset_password_instructions(user)
+                app.logger.info(f"Password reset instructions sent to {email}")
+                return jsonify({"message": "Password reset instructions sent"})
+            app.logger.warning(f"User not found: {email}")
+            return jsonify({"error": "User not found"}), 404
+
+        except Exception as e:
+            app.logger.error(f"Error during forgot password: {e}")
+            return jsonify({"error": "Failed to process forgot password"}), 500
+
+    @app.route('/logout', methods=['POST'])
+    @auth_required()
+    def logout():
         app.logger.info("Processing /logout request")
         try:
             logout_user()
@@ -199,7 +319,16 @@ def init_routes(app):
         app.logger.info("Processing /get_users request")
         try:
             users = User.query.all()
-            formatted_users = [{'id': user.id, 'email': user.email, 'roles': [role.name for role in user.roles], 'active': user.active, 'confirmed_at': user.confirmed_at} for user in users]
+            formatted_users = []
+            for user in users:
+                formatted_users.append({
+                    'id': user.id,
+                    'email': user.email,
+                    'roles': [role.name for role in user.roles],
+                    'active': user.active,
+                    'confirmed_at': user.confirmed_at
+                })
+
             return jsonify({"users": formatted_users}), 200
         except Exception as e:
             app.logger.error(f"Error fetching users: {e}")
@@ -212,7 +341,7 @@ def init_routes(app):
         try:
             data = request.json
             user_id = data.get('id')
-            new_roles = data.get('roles')
+            new_roles = data.get('roles')  # Expecting a list of roles
             active_status = data.get('active')
 
             user = User.query.get(user_id)
@@ -220,6 +349,7 @@ def init_routes(app):
                 return jsonify({"error": "User not found"}), 404
 
             if new_roles:
+                # Clear existing roles and assign new roles
                 user.roles.clear()
                 for role_name in new_roles:
                     role = user_datastore.find_role(role_name)
