@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
@@ -7,16 +7,30 @@ const Login = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    // Fetch the CSRF token from the backend when the component mounts
+    axios.get('http://localhost:5000/get_csrf_token', { withCredentials: true })
+      .then(response => {
+        const csrfToken = response.data.csrf_token;
+        Cookies.set('csrf_token', csrfToken); // Store CSRF token in cookies
+        console.log('CSRF token set in cookie:', csrfToken); // Debug log
+      })
+      .catch(error => {
+        console.error('Error fetching CSRF token:', error);
+        setError('Failed to fetch CSRF token.');
+      });
+  }, []);
+
   const handleSubmit = async (event) => {
     event.preventDefault();
-
     try {
-      const csrfToken = Cookies.get('csrf_token');
-      const response = await axios.post('http://localhost:5000/login', {
-        email,
-        password,
-        csrf_token: csrfToken,
-      });
+      const csrfToken = Cookies.get('csrf_token'); // Get CSRF token from cookies
+      console.log('CSRF token being sent:', csrfToken); // Debug log
+
+      // Send login request with the CSRF token in the headers
+      const response = await axios.post(
+        'http://localhost:5000/home',
+      );
       onLogin(response.data.user_id);
     } catch (error) {
       console.error("Login failed:", error);

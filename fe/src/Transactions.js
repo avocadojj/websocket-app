@@ -1,4 +1,3 @@
-// Transactions.js
 import React, { useEffect, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import io from 'socket.io-client';
@@ -20,46 +19,46 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
     const [indices, setIndices] = useState([]);
     const [totalTransactions, setTotalTransactions] = useState(0); // To track total number of transactions
 
-    const fetchIndices = useCallback(() => {
-        axios.get('http://localhost:5000/get_indices')
-            .then(response => {
-                const indexList = response.data.indices || [];
-                setIndices(indexList);
-                if (indexList.length > 0) {
-                    setSelectedIndex(indexList[0]);
-                }
-            })
-            .catch(error => {
-                console.error("Error fetching indices:", error);
-                alert('Error fetching indices: ' + error.message);
-            });
+    // Fetch available indices from the server
+    const fetchIndices = useCallback(async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/get_indices');
+            const indexList = response.data.indices || [];
+            setIndices(indexList);
+            if (indexList.length > 0) {
+                setSelectedIndex(indexList[0]);
+            }
+        } catch (error) {
+            console.error("Error fetching indices:", error);
+            alert('Error fetching indices: ' + error.message);
+        }
     }, []);
 
-    const fetchTransactions = useCallback(() => {
+    // Fetch transactions from the server
+    const fetchTransactions = useCallback(async () => {
         if (!selectedIndex) return;
-        axios.get('http://localhost:5000/get_transactions', {
-            params: {
-                index: selectedIndex,
-                page: currentPage,
-                size: pageSize,
-                order_id: orderId || null,
-                customer_id: customerId || null,
-            }
-        })
-        .then(response => {
+
+        try {
+            const response = await axios.get('http://localhost:5000/get_transactions', {
+                params: {
+                    index: selectedIndex,
+                    page: currentPage,
+                    size: pageSize,
+                    order_id: orderId || null,
+                    customer_id: customerId || null,
+                }
+            });
             const newTransactions = response.data.transactions || [];
             const total = response.data.total || 0; // Get total count from the response
-            console.log('Raw transactions data:', newTransactions);
-
             setTransactions(newTransactions);
             setTotalTransactions(total); // Update total transactions count
-        })
-        .catch(error => {
+        } catch (error) {
             console.error("Error fetching transactions:", error);
             alert('Error fetching transactions: ' + error.message);
-        });
+        }
     }, [selectedIndex, currentPage, pageSize, orderId, customerId]);
 
+    // Handle page change
     const handlePageChange = (event) => {
         const newPage = parseInt(event.target.value, 10);
         const maxPage = Math.ceil(totalTransactions / pageSize); // Calculate max page
@@ -69,57 +68,69 @@ const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
         }
     };
 
+    // Handle input page change
     const handleInputPageChange = (event) => {
         setInputPage(event.target.value);
     };
 
+    // Handle next page
     const handleNextPage = () => {
         const maxPage = Math.ceil(totalTransactions / pageSize); // Calculate max page
         if (currentPage < maxPage) {
-            setCurrentPage(prev => prev + 1);
-            setInputPage(prev => prev + 1);
+            setCurrentPage((prev) => prev + 1);
+            setInputPage((prev) => prev + 1);
         }
     };
 
+    // Handle previous page
     const handlePreviousPage = () => {
         if (currentPage > 1) {
-            setCurrentPage(prev => Math.max(prev - 1, 1));
-            setInputPage(prev => Math.max(prev - 1, 1));
+            setCurrentPage((prev) => Math.max(prev - 1, 1));
+            setInputPage((prev) => Math.max(prev - 1, 1));
         }
     };
 
+    // Toggle row expansion for displaying transaction details
     const toggleRowExpansion = (id) => {
-        setExpandedRows((prevExpandedRows) => 
-            prevExpandedRows.includes(id) 
-                ? prevExpandedRows.filter(rowId => rowId !== id) 
+        setExpandedRows((prevExpandedRows) =>
+            prevExpandedRows.includes(id)
+                ? prevExpandedRows.filter((rowId) => rowId !== id)
                 : [...prevExpandedRows, id]
         );
     };
 
+    // Fetch indices when component mounts
     useEffect(() => {
         fetchIndices();
     }, [fetchIndices]);
 
+    // Fetch transactions whenever dependencies change
     useEffect(() => {
         fetchTransactions();
+    }, [fetchTransactions]);
 
-        socket.on('transaction_updated', (updatedTransaction) => {
+    // Handle socket events and cleanup on component unmount
+    useEffect(() => {
+        const handleTransactionUpdated = (updatedTransaction) => {
             setTransactions((prevTransactions) =>
                 prevTransactions.map((tx) =>
                     tx.id === updatedTransaction.id ? { ...tx, ...updatedTransaction } : tx
                 )
             );
-        });
+        };
 
-        socket.on('new_data_available', () => {
+        const handleNewDataAvailable = () => {
             setNewDataAvailable(true);
-        });
+        };
+
+        socket.on('transaction_updated', handleTransactionUpdated);
+        socket.on('new_data_available', handleNewDataAvailable);
 
         return () => {
-            socket.off('transaction_updated');
-            socket.off('new_data_available');
+            socket.off('transaction_updated', handleTransactionUpdated);
+            socket.off('new_data_available', handleNewDataAvailable);
         };
-    }, [fetchTransactions]);
+    }, []);
 
     return (
         <div>

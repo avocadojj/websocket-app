@@ -13,8 +13,8 @@ from flask_cors import CORS
 app = Flask(__name__)
 app.config.from_object(DevelopmentConfig)  # Use the config
 
-# Disable CSRF Protection
-app.config['WTF_CSRF_ENABLED'] = False
+# Set secret key for sessions
+app.secret_key = 'SECRET_KEY'  # Replace with a secure random key
 
 # Initialize CORS and SocketIO
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
@@ -37,41 +37,16 @@ security = Security(app, user_datastore)
 
 # Setup logging to a file
 handler = RotatingFileHandler('app.log', maxBytes=100000, backupCount=3)
-handler.setLevel(logging.DEBUG)  # Use DEBUG to capture more detailed logs
+handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 app.logger.addHandler(handler)
 
-app.logger.setLevel(logging.DEBUG)  # Ensure the logger is set to capture debug level logs
+app.logger.setLevel(logging.DEBUG)
 
-# Import routes after all the initializations to avoid circular imports
+# Import routes after all initializations to avoid circular imports
 from routes import init_routes
 init_routes(app)
-
-# Create roles before the first request
-@app.before_request
-def create_roles():
-    app.logger.info("Running create_roles before first request")
-    try:
-        app.before_request_funcs[None].remove(create_roles)
-        db.create_all()
-
-        if not Role.query.filter_by(name='Admin').first():
-            user_datastore.create_role(name='Admin', description='Administrator')
-            app.logger.debug("Created 'Admin' role")
-
-        if not Role.query.filter_by(name='Fraud Analyst').first():
-            user_datastore.create_role(name='Fraud Analyst', description='Handles fraud analysis')
-            app.logger.debug("Created 'Fraud Analyst' role")
-
-        if not Role.query.filter_by(name='Rule Maker').first():
-            user_datastore.create_role(name='Rule Maker', description='Manages rules')
-            app.logger.debug("Created 'Rule Maker' role")
-
-        db.session.commit()
-        app.logger.info("Roles committed to the database")
-    except Exception as e:
-        app.logger.error(f"Error in create_roles: {e}")
 
 if __name__ == '__main__':
     app.logger.info("Start Web Fraud App")

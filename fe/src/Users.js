@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect } from 'react'; // Added useEffect for fetching users and roles
+import axios from 'axios'; // Ensure axios is imported
 
 const Users = () => {
   const [users, setUsers] = useState([]);
@@ -7,11 +7,7 @@ const Users = () => {
   const [newUser, setNewUser] = useState({ email: '', password: '', role: '' });
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    fetchUsers();
-    fetchRoles();
-  }, []);
-
+  // Fetch users
   const fetchUsers = async () => {
     try {
       const response = await axios.get('http://localhost:5000/get_users');
@@ -21,6 +17,7 @@ const Users = () => {
     }
   };
 
+  // Fetch roles
   const fetchRoles = async () => {
     try {
       const response = await axios.get('http://localhost:5000/get_roles');
@@ -44,7 +41,7 @@ const Users = () => {
     try {
       const response = await axios.post('http://localhost:5000/create_user', newUser);
       setMessage(response.data.message);
-      fetchUsers();
+      fetchUsers(); // Fetch users after creation to update the list
     } catch (error) {
       console.error("Error creating user:", error);
       setMessage('Failed to create user.');
@@ -55,23 +52,29 @@ const Users = () => {
     try {
       const response = await axios.post('http://localhost:5000/delete_user', { id });
       setMessage(response.data.message);
-      fetchUsers();
+      fetchUsers(); // Fetch users after deletion to update the list
     } catch (error) {
       console.error("Error deleting user:", error);
       setMessage('Failed to delete user.');
     }
   };
 
+  // Define the handleUpdateUser function
   const handleUpdateUser = async (id, active, role) => {
     try {
       const response = await axios.post('http://localhost:5000/update_user', { id, active, role });
       setMessage(response.data.message);
-      fetchUsers();
+      fetchUsers(); // Fetch users after update to refresh the list
     } catch (error) {
       console.error("Error updating user:", error);
       setMessage('Failed to update user.');
     }
   };
+
+  useEffect(() => {
+    fetchUsers(); // Fetch users when the component mounts
+    fetchRoles(); // Fetch roles when the component mounts
+  }, []);
 
   return (
     <div>
