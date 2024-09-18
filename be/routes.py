@@ -3,11 +3,9 @@ from flask import jsonify, request
 from flask_security import roles_required, auth_required, current_user, logout_user, login_user
 from flask_security.utils import hash_password, send_mail
 from datetime import datetime
-from models import Blacklist
 import pytz
 from app import es, socketio, user_datastore, db
 from models import Role, User
-import csv
 
 # Define the global variable `latest_timestamp` at the module level
 latest_timestamp = None
@@ -83,6 +81,7 @@ def init_routes(app):
             # Execute the query against Elasticsearch
             res = es.search(index=index, body=query)
             transactions = res.get('hits', {}).get('hits', [])
+
             app.logger.debug(f"Number of transactions fetched: {len(transactions)}")
 
             # Format the fetched transactions
@@ -122,7 +121,10 @@ def init_routes(app):
     def get_indices():
         app.logger.info("Processing /get_indices request")
         try:
-            selected_index_pattern = "low-alert*,med-alert*,high-alert*"
+            # Define the pattern or list of indices to fetch
+            selected_index_pattern = "low-alert*,med-alert*,high-alert*"  # Use patterns or specific indices
+
+            # Fetch only the indices matching the pattern
             indices = es.indices.get_alias(index=selected_index_pattern)
             index_list = list(indices.keys())
 
@@ -130,6 +132,11 @@ def init_routes(app):
             app.logger.debug(f"Fetched indices: {index_list}")
 
             return jsonify({"indices": index_list}), 200
+
+        except NotFoundError as e:
+            # More specific error handling for index not found
+            app.logger.error(f"Index not found: {e.info.get('index')}")
+            return jsonify({"error": f"Index not found: {e.info.get('index')}" }), 404
 
         except Exception as e:
             app.logger.error(f"Error fetching indices: {e}")
@@ -153,6 +160,7 @@ def init_routes(app):
             socketio.emit('transaction_updated', {'id': doc_id, 'remark': remark})
 
             app.logger.info("Successfully saved remark")
+
             return jsonify({"status": "success"})
 
         except Exception as e:
@@ -312,6 +320,86 @@ def init_routes(app):
         except Exception as e:
             app.logger.error(f"Error creating admin: {e}")
             return jsonify({"error": "Failed to create admin"}), 500
+
+    @app.route('/get_users', methods=['GET'])
+    @roles_required('Admin')
+    def get_users():
+        app.logger.info("Processing /get_users request")
+        try:
+            users = User.query.all()
+            formatted_users = []
+            for user in users:
+                formatted_users.append({
+                    'id': user.id,
+                    'email': user.email,
+                    'roles': [role.name for role in user.roles],
+                    'active': user.active,
+                    'confirmed_at': user.confirmed_at
+                })
+
+            return jsonify({"users": formatted_users}), 200
+        except Exception as e:
+            app.logger.error(f"Error fetching users: {e}")
+            return jsonify({"error": "Failed to fetch users"}), 500
+
+    @app.route('/update_user', methods=['POST'])
+    @roles_required('Admin')
+    def update_user():
+        app.logger.info("Processing /update_user request")
+        try:
+            data = request.json
+            user_id = data.get('id')
+            new_roles = data.get('roles')  # Expecting a list of roles
+            active_status = data.get('active')
+
+            user = User.query.get(user_id)
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            if new_roles:
+                # Clear existing roles and assign new roles
+                user.roles.clear()
+                for role_name in new_roles:
+                    role = user_datastore.find_role(role_name)
+                    if role:
+                        user_datastore.add_role_to_user(user, role)
+
+            if active_status is not None:
+                user.active = active_status
+
+            db.session.commit()
+            return jsonify({"message": "User updated successfully"}), 200
+        except Exception as e:
+            app.logger.error(f"Error updating user: {e}")
+            return jsonify({"error": "Failed to update user"}), 500
+
+    @app.route('/delete_user', methods=['POST'])
+    @roles_required('Admin')
+    def delete_user():
+        app.logger.info("Processing /delete_user request")
+        try:
+            data = request.json
+            user_id = data.get('id')
+
+            user = User.query.get(user_id)
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            db.session.delete(user)
+            db.session.commit()
+            return jsonify({"message": "User deleted successfully"}), 200
+        except Exception as e:
+            app.logger.error(f"Error deleting user: {e}")
+            return jsonify({"error": "Failed to delete user"}), 500
+
+    @app.route('/get_roles', methods=['GET'])
+    def get_roles():
+        try:
+            roles = [role.name for role in Role.query.all()]
+            return jsonify({"roles": roles}), 200
+        except Exception as e:
+            app.logger.error(f"Error fetching roles: {e}")
+            return jsonify({"error": "Failed to fetch roles"}), 500
 
     @app.route('/get_users', methods=['GET'])
     @roles_required('Admin')
