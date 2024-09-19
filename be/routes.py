@@ -400,3 +400,82 @@ def init_routes(app):
         except Exception as e:
             app.logger.error(f"Error fetching roles: {e}")
             return jsonify({"error": "Failed to fetch roles"}), 500
+
+    @app.route('/blacklist', methods=['GET'])
+    def get_blacklist():
+        app.logger.info("Fetching all blacklisted entities")
+        try:
+            blacklist = Blacklist.query.all()
+            result = [{"id": entry.id, "entity_type": entry.entity_type, "entity_value": entry.entity_value, "created_at": entry.created_at, "description": entry.description} for entry in blacklist]
+            return jsonify({"blacklist": result}), 200
+        except Exception as e:
+            app.logger.error(f"Error fetching blacklist: {e}")
+            return jsonify({"error": "Failed to fetch blacklist"}), 500
+
+    @app.route('/blacklist/<int:id>', methods=['GET'])
+    def get_blacklist_entry(id):
+        app.logger.info(f"Fetching blacklist entry with ID: {id}")
+        try:
+            entry = Blacklist.query.get_or_404(id)
+            result = {"id": entry.id, "entity_type": entry.entity_type, "entity_value": entry.entity_value, "created_at": entry.created_at, "description": entry.description}
+            return jsonify({"blacklist": result}), 200
+        except Exception as e:
+            app.logger.error(f"Error fetching blacklist by ID: {e}")
+            return jsonify({"error": "Failed to fetch blacklist by ID"}), 500
+
+    @app.route('/blacklist/upload', methods=['POST'])
+    def upload_blacklist():
+        app.logger.info("Uploading CSV to update the blacklist")
+        try:
+            if 'file' not in request.files:
+                return jsonify({"error": "No file provided"}), 400
+
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({"error": "No file selected"}), 400
+
+            file_data = file.read().decode('utf-8').strip()
+            csv_input = csv.reader(file_data.splitlines())
+
+            next(csv_input)
+
+            for row in csv_input:
+                row = [field.strip() for field in row]
+                if len(row) != 4 or not any(row):
+                    app.logger.error(f"Invalid row format: {row}")
+                    continue
+
+                entity_type, entity_value, description, created_at = row
+                blacklist_entry = Blacklist(entity_type=entity_type, entity_value=entity_value, description=description, created_at=created_at)
+                db.session.add(blacklist_entry)
+
+            db.session.commit()
+            return jsonify({"message": "CSV uploaded and processed successfully"}), 200
+
+        except Exception as e:
+            app.logger.error(f"Failed to process CSV upload: {e}")
+            return jsonify({"error": "Failed to process CSV upload"}), 500
+
+    @app.route('/export_blacklist', methods=['GET'])
+    def export_blacklist():
+        app.logger.info("Exporting blacklist data to CSV")
+        try:
+            export_blacklist_csv()
+            return jsonify({"message": "Blacklist exported successfully"}), 200
+        except Exception as e:
+            app.logger.error(f"Error exporting blacklist: {e}")
+            return jsonify({"error": "Failed to export blacklist"}), 500
+
+    def export_blacklist_csv():
+        try:
+            blacklist_entries = Blacklist.query.all()
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            csv_file_path = f'blacklist_export_{current_date}.csv'
+            with open(csv_file_path, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['ID', 'Entity Type', 'Entity Value', 'Description', 'Created At'])
+                for entry in blacklist_entries:
+                    writer.writerow([entry.id, entry.entity_type, entry.entity_value, entry.created_at])
+            print(f"Blacklist exported to CSV successfully: {csv_file_path}")
+        except Exception as e:
+            print(f"Failed to export blacklist to CSV: {e}")

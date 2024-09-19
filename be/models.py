@@ -18,6 +18,25 @@ class Role(db.Model, RoleMixin):
     name = db.Column(db.String(80), unique=True)
     description = db.Column(db.String(255))
 
+class Blacklist(db.Model):
+    __tablename__ = 'blacklist'
+
+    id = db.Column(db.Integer, primary_key=True)
+    entity_type = db.Column(db.String(100), nullable=False)
+    entity_value = db.Column(db.String(255), unique=True, nullable=False)  # e.g., "Customer", "Sales", "Phone", "Address"
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'entity_type': self.entity_type,
+            'entity_value': self.entity_value,
+            'description': self.description,
+            'created_at': self.created_at,
+        }
+
+
 # User model
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
