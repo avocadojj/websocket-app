@@ -107,11 +107,11 @@ def init_routes(app):
 
             app.logger.info("Successfully processed /get_transactions request")
 
-            # Add the total count of transactions in the response
             return jsonify({
                 "total": res.get('hits', {}).get('total', {}).get('value', 0),
                 "transactions": formatted_transactions
             })
+
         except Exception as e:
             app.logger.error(f"Error fetching transactions: {e}")
             return jsonify({"error": "Failed to fetch transactions"}), 500
