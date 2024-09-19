@@ -1,33 +1,35 @@
-import React from 'react';
+// src/Header.js
+import React, { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AuthContext } from './AuthContext';
 
-const Header = ({ userEmail, loginTimestamp, onLogout, onRefresh }) => {
-    const navigate = useNavigate();
+const Header = ({ onLogout }) => {
+  const navigate = useNavigate();
+  const { userEmail, loginTimestamp } = useContext(AuthContext);
 
-    const handleManageUsers = () => {
-        navigate('/users');
-    };
+  const handleManageUsers = () => {
+    navigate('/users');
+  };
 
-    const handleManageBlacklist = () => {
-        navigate('/blacklist');
-    };
+  const handleManageBlacklist = () => {
+    navigate('/blacklist');
+  };
 
-    const handleBack = () => {
-        navigate(-1);
-    };
+  const handleBack = () => {
+    navigate(-1);
+  };
 
-    return (
-        <header>z
-            <div>
-                <p>Hello, {userEmail} @ {loginTimestamp}</p> {/* Display user info and login timestamp */}
-                <button onClick={onRefresh}>Refresh</button>
-                <button onClick={onLogout}>Logout</button>
-                <button onClick={handleManageUsers}>Manage Users</button>
-                <button onClick={handleBack}>Back</button>
-                <button onClick={handleManageBlacklist}>Manage Blacklist</button>
-            </div>
-        </header>
-    );
+  return (
+    <header>
+      <div>
+        <p>Hello, {userEmail} @ {loginTimestamp}</p>
+        <button onClick={handleManageUsers}>Manage Users</button>
+        <button onClick={handleBack}>Back</button>
+        <button onClick={handleManageBlacklist}>Manage Blacklist</button>
+        <button onClick={onLogout}>Logout</button>
+      </div>
+    </header>
+  );
 };
 
 export default Header;

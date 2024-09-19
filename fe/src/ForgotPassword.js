@@ -6,8 +6,8 @@ const ForgotPassword = () => {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    axios.post('http://localhost:5000/forgot_password', { email })
-      .then(response => {
+    axios.post('http://localhost:5000/forgot_password', { email }, { withCredentials: true })
+    .then(response => {
         alert("Password reset instructions sent to your email.");
       })
       .catch(error => {

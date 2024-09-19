@@ -1,52 +1,70 @@
+// src/Header.test.js
 import React from 'react';
+import '@testing-library/jest-dom'; // Import jest-dom matchers
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom'; // To handle routing context
+import { useNavigate } from 'react-router-dom';
 import Header from './Header';
+import { AuthContext } from './AuthContext';
+
+// Mock useNavigate
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: jest.fn(),
+}));
 
 describe('Header Component', () => {
+  const navigateMock = jest.fn();
+  beforeEach(() => {
+    useNavigate.mockReturnValue(navigateMock);
+  });
+
   test('renders user information and buttons', () => {
+    const mockAuthContextValue = {
+      userEmail: 'test@example.com',
+      loginTimestamp: '2024-09-10 10:00',
+    };
+
     render(
-      <MemoryRouter>
-        <Header 
-          userEmail="test@example.com"
-          loginTimestamp="2024-09-10 10:00"
-          onLogout={jest.fn()}
-          onRefresh={jest.fn()}
-        />
-      </MemoryRouter>
+      <AuthContext.Provider value={mockAuthContextValue}>
+        <Header onLogout={jest.fn()} />
+      </AuthContext.Provider>
     );
 
     // Check if user information is displayed
     expect(screen.getByText(/Hello, test@example.com @ 2024-09-10 10:00/i)).toBeInTheDocument();
 
     // Check if all buttons are present
-    expect(screen.getByText(/Refresh/i)).toBeInTheDocument();
-    expect(screen.getByText(/Logout/i)).toBeInTheDocument();
-    expect(screen.getByText(/Manage Users/i)).toBeInTheDocument();
-    expect(screen.getByText(/Manage Blacklist/i)).toBeInTheDocument();
-    expect(screen.getByText(/Back/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Manage Users/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Back/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Manage Blacklist/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Logout/i })).toBeInTheDocument();
   });
 
   test('handles button clicks', () => {
     const onLogoutMock = jest.fn();
-    const onRefreshMock = jest.fn();
+
+    const mockAuthContextValue = {
+      userEmail: 'test@example.com',
+      loginTimestamp: '2024-09-10 10:00',
+    };
 
     render(
-      <MemoryRouter>
-        <Header 
-          userEmail="test@example.com"
-          loginTimestamp="2024-09-10 10:00"
-          onLogout={onLogoutMock}
-          onRefresh={onRefreshMock}
-        />
-      </MemoryRouter>
+      <AuthContext.Provider value={mockAuthContextValue}>
+        <Header onLogout={onLogoutMock} />
+      </AuthContext.Provider>
     );
 
     // Simulate button clicks
-    fireEvent.click(screen.getByText(/Refresh/i));
-    expect(onRefreshMock).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Manage Users/i }));
+    expect(navigateMock).toHaveBeenCalledWith('/users');
 
-    fireEvent.click(screen.getByText(/Logout/i));
+    fireEvent.click(screen.getByRole('button', { name: /Manage Blacklist/i }));
+    expect(navigateMock).toHaveBeenCalledWith('/blacklist');
+
+    fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+    expect(navigateMock).toHaveBeenCalledWith(-1);
+
+    fireEvent.click(screen.getByRole('button', { name: /Logout/i }));
     expect(onLogoutMock).toHaveBeenCalled();
   });
 });

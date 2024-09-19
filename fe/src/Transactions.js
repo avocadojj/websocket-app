@@ -7,7 +7,7 @@ import TransactionsTable from './TransactionsTable'; // Import TransactionsTable
 
 const socket = io('http://localhost:5000');
 
-const Transactions = ({ userId, userEmail, loginTimestamp, onLogout }) => {
+const Transactions = ({ userId, userEmail, loginTimestamp }) => {
     const [transactions, setTransactions] = useState([]);
     const [pageSize, setPageSize] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
@@ -197,7 +197,6 @@ Transactions.propTypes = {
     userId: PropTypes.string,
     userEmail: PropTypes.string,
     loginTimestamp: PropTypes.string,
-    onLogout: PropTypes.func.isRequired,
 };
 
 export default Transactions;

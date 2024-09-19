@@ -26,23 +26,23 @@ const formatOrderTime = (dateString) => {
 const TransactionsTable = ({ transactions, expandedRows, toggleRowExpansion }) => {
     return (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-                <tr>
-                    <th></th> {/* Column for toggle button */}
-                    <th>Date</th>
-                    <th>Time</th>
-                    <th>Order Time</th>
-                    <th>Customer Full Name</th>
-                    <th>Customer ID</th>
-                    <th>Customer Gender</th>
-                    <th>Location</th>
-                    <th>Order ID</th>
-                    <th>Products</th>
-                    <th>Total Price</th>
-                    <th>Label</th>
-                    <th>Remark</th>
-                </tr>
-            </thead>
+        <thead>
+            <tr>
+            <th></th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Order Time</th>
+            <th>Customer Full Name</th>
+            <th>Customer ID</th>
+            <th>Customer Gender</th>
+            <th>Location</th>
+            <th>Order ID</th>
+            <th>Products</th>
+            <th>Total Price</th>
+            <th>Label</th>
+            <th>Remark</th>
+            </tr>
+      </thead>
             <tbody>
                 {transactions.map((tx) => {
                     const formattedDate = formatDate(tx.timestamp || tx.data['@timestamp']);
